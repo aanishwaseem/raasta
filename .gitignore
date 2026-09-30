@@ -19,3 +19,6 @@ build/
 .idea/
 .DS_Store
 screenshots/out/
+ai-service/models_store/*
+!ai-service/models_store/.gitkeep
+backend/storage*/
