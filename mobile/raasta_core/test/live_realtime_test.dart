@@ -20,6 +20,12 @@ void main() {
       'pickup': {'lat': 31.5102, 'lng': 74.3441, 'address': 'Liberty Market'},
       'dropoff': {'lat': 31.5497, 'lng': 74.3436, 'address': 'Emporium'},
     });
+    // the driver should be pushed the offer before any polling happens
+    final drt = drv.realtime()!;
+    final offerPush = Completer<String>();
+    drt.events.listen((e) { if (e == 'ride.offer' && !offerPush.isCompleted) offerPush.complete(e); });
+    addTearDown(drt.dispose);
+    for (var i = 0; i < 20 && !drt.connected; i++) { await Future<void>.delayed(const Duration(milliseconds: 250)); }
     final ride = await pax.post('/rides', body: {'quoteId': quote['id'], 'productCode': 'ECONOMY', 'paymentMethod': 'CASH'}, idempotencyKey: ApiClient.newIdempotencyKey());
 
     final rt = pax.realtime(rideId: ride['id'] as String)!;
@@ -29,6 +35,7 @@ void main() {
     for (var i = 0; i < 20 && !rt.connected; i++) { await Future<void>.delayed(const Duration(milliseconds: 250)); }
     expect(rt.connected, isTrue);
 
+    expect(await offerPush.future.timeout(const Duration(seconds: 5)), 'ride.offer');
     Map? offer;
     for (var i = 0; i < 20 && offer == null; i++) {
       final o = await drv.get('/driver/offers/current');

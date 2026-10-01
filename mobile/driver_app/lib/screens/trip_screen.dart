@@ -22,7 +22,7 @@ class _DriverTripScreenState extends State<DriverTripScreen> {
   Timer? _timer;
   RealtimeClient? _rt;
   StreamSubscription<String>? _rtSub;
-  Timer? _pingTimer;
+  LocationReporter? _reporter;
   final _pin = TextEditingController();
 
   @override
@@ -33,7 +33,7 @@ class _DriverTripScreenState extends State<DriverTripScreen> {
     _rtSub = _rt?.events.listen((_) => _poll());
     // pushes make updates instant; polling stays as the fallback
     _timer = Timer.periodic(Duration(seconds: _rt == null ? 3 : 10), (_) => _poll());
-    _pingTimer = Timer.periodic(const Duration(seconds: 5), (_) => _ping().catchError((_) {}));
+    _reporter = LocationReporter(widget.api, widget.location)..start();
   }
 
   @override
@@ -41,7 +41,7 @@ class _DriverTripScreenState extends State<DriverTripScreen> {
     _timer?.cancel();
     _rtSub?.cancel();
     _rt?.dispose();
-    _pingTimer?.cancel();
+    _reporter?.stop();
     _pin.dispose();
     super.dispose();
   }
@@ -75,12 +75,6 @@ class _DriverTripScreenState extends State<DriverTripScreen> {
     }
   }
 
-  Future<void> _ping() async {
-    final p = await widget.location.current();
-    if (p.approximate) return;
-    await widget.api.post('/driver/location', body: {'lat': p.lat, 'lng': p.lng, if (p.heading != null) 'heading': p.heading, if (p.speed != null) 'speed': p.speed});
-  }
-
   @override
   Widget build(BuildContext context) {
     final r = _ride;
@@ -93,7 +87,7 @@ class _DriverTripScreenState extends State<DriverTripScreen> {
       case 'DRIVER_ASSIGNED':
       case 'DRIVER_ARRIVING':
         headline = 'Drive to pickup';
-        action = FilledButton(onPressed: _busy ? null : () => _act(() async { await _ping(); await widget.api.post('$base/arrived'); }), child: const Text("I've arrived"));
+        action = FilledButton(onPressed: _busy ? null : () => _act(() async { await _reporter?.sendNow(); await widget.api.post('$base/arrived'); }), child: const Text("I've arrived"));
       case 'DRIVER_ARRIVED':
         headline = 'Enter the rider\'s PIN';
         action = Column(children: [

@@ -1,5 +1,5 @@
 # Local development stack: docker compose up --build
-# Then seed test data: docker compose exec api npm run db:seed
+# Test data is seeded automatically. Demo walkthrough: DEMO.md
 name: raasta
 
 x-api-env: &api-env
@@ -45,6 +45,14 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
 
+  # one-shot: loads the clearly marked test accounts and Lahore reference data (safe to re-run)
+  seed:
+    build: ./backend
+    command: ["npm", "run", "db:seed"]
+    environment: *api-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
   api:
     build: ./backend
     environment:
@@ -54,6 +62,7 @@ services:
     volumes: [storage:/app/storage]
     depends_on:
       migrate: { condition: service_completed_successfully }
+      seed: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
       ai-service: { condition: service_started }
 
@@ -84,6 +93,30 @@ services:
       args:
         VITE_API_URL: http://localhost:3000/api/v1
     ports: ["5173:5173"]
+    depends_on: [api]
+
+  # Demo apps in the browser. DEMO_LOCATION pins the phone's GPS (Liberty Market, Lahore) so rides work from anywhere;
+  # set DEMO_LOCATION= (empty) to use the browser's real location instead.
+  passenger-web:
+    build:
+      context: ./mobile
+      dockerfile: Dockerfile.web
+      args:
+        APP: passenger_app
+        API_URL: http://localhost:3000/api/v1
+        DEMO_LOCATION: ${DEMO_LOCATION-31.5102,74.3441}
+    ports: ["8080:80"]
+    depends_on: [api]
+
+  driver-web:
+    build:
+      context: ./mobile
+      dockerfile: Dockerfile.web
+      args:
+        APP: driver_app
+        API_URL: http://localhost:3000/api/v1
+        DEMO_LOCATION: ${DEMO_LOCATION-31.5102,74.3441}
+    ports: ["8081:80"]
     depends_on: [api]
 
 volumes:

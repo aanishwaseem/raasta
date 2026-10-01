@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:geolocator/geolocator.dart';
 
 class Fix {
@@ -21,6 +22,16 @@ class DeviceLocation {
   final double fallbackLat;
   final double fallbackLng;
   String? lastProblem;
+
+  /// Demo builds pin the device to one spot ("lat,lng" via --dart-define=DEMO_LOCATION=...) so the apps work
+  /// from any country against the seeded Lahore data.
+  static const _demo = String.fromEnvironment('DEMO_LOCATION');
+  static Fix? get _demoFix {
+    final parts = _demo.split(',');
+    if (parts.length != 2) return null;
+    final lat = double.tryParse(parts[0].trim()), lng = double.tryParse(parts[1].trim());
+    return lat == null || lng == null ? null : Fix(lat, lng, accuracy: 5);
+  }
 
   Future<bool> _ensure() async {
     if (!await Geolocator.isLocationServiceEnabled()) {
@@ -45,6 +56,8 @@ class DeviceLocation {
       accuracy: p.accuracy.isFinite ? p.accuracy : null);
 
   Future<Fix> current() async {
+    final demo = _demoFix;
+    if (demo != null) return demo;
     try {
       if (!await _ensure()) return _fallback();
       return _from(await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 10))));
@@ -56,9 +69,55 @@ class DeviceLocation {
 
   /// Continuous fixes (every ~10 m). Emits nothing when permission is missing.
   Stream<Fix> stream() async* {
+    final demo = _demoFix;
+    if (demo != null) {
+      yield demo;
+      return;
+    }
     try {
       if (!await _ensure()) return;
       yield* Geolocator.getPositionStream(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 10)).map(_from);
+    } catch (_) {
+      lastProblem ??= 'Location updates stopped.';
+    }
+  }
+
+  /// Fixes that keep arriving while the app is in the background (drivers). Android shows an ongoing
+  /// notification (foreground service); iOS shows the blue location indicator. Needs "always" permission
+  /// to survive the screen locking, so we ask for it only when the user is already online.
+  Stream<Fix> track() async* {
+    final demo = _demoFix;
+    if (demo != null) {
+      yield demo;
+      return;
+    }
+    try {
+      if (!await _ensure()) return;
+      final LocationSettings settings;
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        settings = AndroidSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10,
+          intervalDuration: const Duration(seconds: 5),
+          foregroundNotificationConfig: const ForegroundNotificationConfig(
+            notificationTitle: 'Raasta driver',
+            notificationText: 'Sharing your location while you are online',
+            enableWakeLock: true,
+          ),
+        );
+      } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+        settings = AppleSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10,
+          activityType: ActivityType.automotiveNavigation,
+          pauseLocationUpdatesAutomatically: false,
+          showBackgroundLocationIndicator: true,
+          allowBackgroundLocationUpdates: true,
+        );
+      } else {
+        settings = const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 10);
+      }
+      yield* Geolocator.getPositionStream(locationSettings: settings).map(_from);
     } catch (_) {
       lastProblem ??= 'Location updates stopped.';
     }
