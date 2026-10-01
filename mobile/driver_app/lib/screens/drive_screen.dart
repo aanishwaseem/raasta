@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:raasta_core/raasta_core.dart';
 
-import '../location.dart';
 import 'earnings_screen.dart';
 import 'trip_screen.dart';
 
@@ -11,7 +10,7 @@ import 'trip_screen.dart';
 class DriveScreen extends StatefulWidget {
   const DriveScreen({super.key, required this.api, required this.location, required this.onSignOut});
   final ApiClient api;
-  final LocationSource location;
+  final DeviceLocation location;
   final VoidCallback onSignOut;
 
   @override
@@ -23,6 +22,7 @@ class _DriveScreenState extends State<DriveScreen> {
   bool _busy = false;
   String? _error;
   Map<String, dynamic>? _offer;
+  Fix? _pos;
   Timer? _offerTimer;
   Timer? _pingTimer;
 
@@ -63,7 +63,12 @@ class _DriveScreenState extends State<DriveScreen> {
         setState(() { _online = false; _offer = null; });
       } else {
         final p = await widget.location.current();
+        if (p.approximate) {
+          setState(() => _error = '${widget.location.lastProblem ?? 'Your location is unavailable.'} Turn on location to go online.');
+          return;
+        }
         await widget.api.post('/driver/online', body: {'lat': p.lat, 'lng': p.lng});
+        _pos = p;
         setState(() => _online = true);
         _offerTimer = Timer.periodic(const Duration(seconds: 3), (_) => _pollOffer());
         _pingTimer = Timer.periodic(const Duration(seconds: 5), (_) => _ping());
@@ -78,7 +83,9 @@ class _DriveScreenState extends State<DriveScreen> {
   Future<void> _ping() async {
     try {
       final p = await widget.location.current();
-      await widget.api.post('/driver/location', body: {'lat': p.lat, 'lng': p.lng});
+      if (p.approximate) return;
+      if (mounted) setState(() => _pos = p);
+      await widget.api.post('/driver/location', body: {'lat': p.lat, 'lng': p.lng, if (p.heading != null) 'heading': p.heading, if (p.speed != null) 'speed': p.speed, if (p.accuracy != null) 'accuracy': p.accuracy});
     } on ApiException {/* next ping retries */}
   }
 
@@ -109,17 +116,18 @@ class _DriveScreenState extends State<DriveScreen> {
         IconButton(tooltip: 'Earnings', icon: const Icon(Icons.payments_outlined), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EarningsScreen(api: widget.api)))),
         IconButton(tooltip: 'Sign out', icon: const Icon(Icons.logout), onPressed: _online ? null : widget.onSignOut),
       ]),
-      body: Padding(
+      bottomNavigationBar: SafeArea(child: Padding(padding: const EdgeInsets.all(16), child: FilledButton(onPressed: _busy ? null : _toggle, child: Text(_online ? 'Go offline' : 'Go online')))),
+      body: ListView(
         padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        children: [
           Text(_online ? 'You are online' : 'You are offline', style: Theme.of(context).textTheme.headlineMedium),
           Text(_online ? 'Waiting for ride requests…' : 'Go online to receive ride requests.'),
           if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
+          if (_pos != null) MapView(height: 180, pins: [MapPin(_pos!.lat, _pos!.lng, icon: Icons.directions_car, color: Colors.black87, label: 'You'), if (o != null) MapPin((o['pickup']['lat'] as num).toDouble(), (o['pickup']['lng'] as num).toDouble(), icon: Icons.trip_origin, label: 'Pickup')]),
+          const SizedBox(height: 12),
           if (o != null) _OfferCard(offer: o, onAccept: () => _respond(true), onDecline: () => _respond(false)),
-          const Spacer(),
-          FilledButton(onPressed: _busy ? null : _toggle, child: Text(_online ? 'Go offline' : 'Go online')),
-        ]),
+        ],
       ),
     );
   }

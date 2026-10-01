@@ -63,6 +63,21 @@ class ApiClient {
     return s;
   }
 
+  Future<Session> register({required String fullName, String? email, String? phone, required String password, required String role}) async {
+    final res = await _send('POST', '/auth/register', body: {
+      'fullName': fullName,
+      if (email != null && email.isNotEmpty) 'email': email,
+      if (phone != null && phone.isNotEmpty) 'phone': phone,
+      'password': password,
+      'role': role,
+      'device': {'deviceId': await store.deviceId(), 'platform': 'android'},
+    }, auth: false);
+    final t = res['tokens'] as Map<String, dynamic>;
+    final s = Session(accessToken: t['accessToken'], refreshToken: t['refreshToken'], name: fullName, roles: List<String>.from(res['user']['roles'] as List));
+    await store.write(_session = s);
+    return s;
+  }
+
   Future<void> logout() async {
     try {
       if (_session != null) await _send('POST', '/auth/logout', expectBody: false);
@@ -72,7 +87,36 @@ class ApiClient {
 
   Future<dynamic> get(String path, {Map<String, String>? query}) => _authed('GET', path, query: query);
   Future<dynamic> post(String path, {Object? body, String? idempotencyKey}) => _authed('POST', path, body: body, idempotencyKey: idempotencyKey);
+  /// Multipart upload (driver documents). [fields] are form fields, [bytes] the file content.
+  Future<dynamic> upload(String path, {required Map<String, String> fields, required List<int> bytes, required String filename}) async {
+    Future<dynamic> once() async {
+      final req = http.MultipartRequest('POST', Uri.parse('$baseUrl$path'))
+        ..fields.addAll(fields)
+        ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+      if (_session != null) req.headers['authorization'] = 'Bearer ${_session!.accessToken}';
+      final http.Response res;
+      try {
+        res = await http.Response.fromStream(await _http.send(req).timeout(const Duration(seconds: 60)));
+      } on Exception {
+        throw ApiException(0, 'NETWORK', 'No connection');
+      }
+      final dynamic json = res.body.isEmpty ? null : jsonDecode(res.body);
+      if (res.statusCode >= 200 && res.statusCode < 300) return json;
+      final err = (json is Map ? json['error'] : null) as Map?;
+      final msg = err?['message'];
+      throw ApiException(res.statusCode, (err?['code'] ?? 'ERROR') as String, msg is List ? msg.join(', ') : (msg ?? 'Upload failed').toString());
+    }
+
+    try {
+      return await once();
+    } on ApiException catch (e) {
+      if (e.status != 401 || _session == null || !await _refresh()) rethrow;
+      return once();
+    }
+  }
+
   Future<dynamic> patch(String path, {Object? body}) => _authed('PATCH', path, body: body);
+  Future<dynamic> delete(String path) => _authed('DELETE', path);
 
   Future<dynamic> _authed(String method, String path, {Map<String, String>? query, Object? body, String? idempotencyKey}) async {
     try {

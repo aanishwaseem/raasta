@@ -16,13 +16,20 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _id = TextEditingController();
   final _pw = TextEditingController();
+  final _name = TextEditingController();
+  bool _signup = false;
   String? _error;
   bool _busy = false;
 
   Future<void> _submit() async {
     setState(() { _busy = true; _error = null; });
     try {
-      await widget.api.login(_id.text.trim(), _pw.text, requiredRole: widget.role);
+      if (_signup) {
+        final id = _id.text.trim();
+        await widget.api.register(fullName: _name.text.trim(), email: id.contains('@') ? id : null, phone: id.contains('@') ? null : id, password: _pw.text, role: widget.role);
+      } else {
+        await widget.api.login(_id.text.trim(), _pw.text, requiredRole: widget.role);
+      }
       widget.onLoggedIn();
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.friendly);
@@ -35,6 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _id.dispose();
     _pw.dispose();
+    _name.dispose();
     super.dispose();
   }
 
@@ -51,12 +59,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text('Raasta', style: Theme.of(context).textTheme.displaySmall?.copyWith(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w700)),
                 Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 32),
-                TextField(controller: _id, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.username], decoration: const InputDecoration(labelText: 'Email or phone')),
+                if (_signup) ...[TextField(controller: _name, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Full name')), const SizedBox(height: 12)],
+                TextField(controller: _id, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.username], decoration: InputDecoration(labelText: _signup ? 'Email or phone (+92...)' : 'Email or phone')),
                 const SizedBox(height: 12),
-                TextField(controller: _pw, obscureText: true, autofillHints: const [AutofillHints.password], onSubmitted: (_) => _submit(), decoration: const InputDecoration(labelText: 'Password')),
+                TextField(controller: _pw, obscureText: true, autofillHints: const [AutofillHints.password], onSubmitted: (_) => _submit(), decoration: InputDecoration(labelText: _signup ? 'Password (8+ characters, letters and numbers)' : 'Password')),
                 if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
                 const SizedBox(height: 20),
-                FilledButton(onPressed: _busy ? null : _submit, child: _busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Sign in')),
+                FilledButton(onPressed: _busy ? null : _submit, child: _busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_signup ? 'Create account' : 'Sign in')),
+                TextButton(onPressed: _busy ? null : () => setState(() { _signup = !_signup; _error = null; }), child: Text(_signup ? 'I already have an account' : 'Create an account')),
               ]),
             ),
           ),

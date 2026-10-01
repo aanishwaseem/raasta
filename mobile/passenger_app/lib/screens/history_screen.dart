@@ -34,7 +34,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             itemBuilder: (_, i) {
               final r = items[i];
               return ListTile(
-                title: Text('${r['pickupAddress']} → ${r['dropoffAddress']}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                title: Text('${r['pickupAddress']} to ${r['dropoffAddress']}', maxLines: 2, overflow: TextOverflow.ellipsis),
                 subtitle: Text('${prettyStatus(r['status'] as String)} · ${(r['requestedAt'] as String).substring(0, 10)}'),
                 trailing: Text(money(r['finalFare'] ?? r['offeredFare'])),
               );

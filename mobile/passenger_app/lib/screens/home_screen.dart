@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:raasta_core/raasta_core.dart';
 
 import 'history_screen.dart';
+import 'safety_screen.dart';
+import 'wallet_screen.dart';
 import 'place_field.dart';
 import 'trip_screen.dart';
 
-/// Pickup defaults to a fixed point in Lahore until device GPS is wired in (see mobile/README.md).
-const _defaultPickup = Place('Liberty Market', 'Liberty Market, Gulberg III, Lahore', 31.5102, 74.3441);
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.api, required this.onSignOut});
+  const HomeScreen({super.key, required this.api, required this.location, required this.onSignOut});
   final ApiClient api;
+  final DeviceLocation location;
   final VoidCallback onSignOut;
 
   @override
@@ -18,7 +19,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  Place _pickup = _defaultPickup;
+  late final _loc = widget.location;
+  Place? _pickup;
+  String? _locNote;
   Place? _dropoff;
   Map<String, dynamic>? _quote;
   String? _product;
@@ -31,6 +34,27 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _resumeActive();
+    _locate();
+  }
+
+  /// Pickup starts at the device location (reverse-geocoded to a name); falls back to the city centre with a note.
+  Future<void> _locate() async {
+    final f = await _loc.current();
+    var name = 'Current location';
+    var address = 'Current location';
+    try {
+      final r = await widget.api.get('/places/reverse', query: {'lat': '${f.lat}', 'lng': '${f.lng}'});
+      if (r is Map) {
+        name = (r['name'] ?? name) as String;
+        address = (r['address'] ?? name) as String;
+      }
+    } on ApiException {/* keep generic label */}
+    if (!mounted) return;
+    setState(() {
+      _pickup = Place(f.approximate ? 'City centre' : name, f.approximate ? 'City centre' : address, f.lat, f.lng);
+      _locNote = f.approximate ? '${_loc.lastProblem ?? 'Using an approximate location.'} Search for your pickup below.' : null;
+      _quote = null;
+    });
   }
 
   Future<void> _resumeActive() async {
@@ -43,10 +67,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openTrip(String id) => Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(api: widget.api, rideId: id)));
 
   Future<void> _getQuote() async {
-    if (_dropoff == null) return;
+    if (_dropoff == null || _pickup == null) return;
     setState(() { _busy = true; _error = null; _quote = null; _requestKey = null; });
     try {
-      final q = await widget.api.post('/rides/quotes', body: {'pickup': _pickup.toRequest(), 'dropoff': _dropoff!.toRequest()}) as Map<String, dynamic>;
+      final q = await widget.api.post('/rides/quotes', body: {'pickup': _pickup!.toRequest(), 'dropoff': _dropoff!.toRequest()}) as Map<String, dynamic>;
       final opts = (q['options'] as List).cast<Map<String, dynamic>>();
       setState(() { _quote = q; _product = opts.isEmpty ? null : opts.first['productCode'] as String; });
     } on ApiException catch (e) {
@@ -76,13 +100,21 @@ class _HomeScreenState extends State<HomeScreen> {
     final opts = (_quote?['options'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
     return Scaffold(
       appBar: AppBar(title: const Text('Raasta'), actions: [
+        IconButton(tooltip: 'Wallet', icon: const Icon(Icons.account_balance_wallet_outlined), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => WalletScreen(api: widget.api)))),
+        IconButton(tooltip: 'Safety', icon: const Icon(Icons.shield_outlined), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SafetyScreen(api: widget.api)))),
         IconButton(tooltip: 'Activity', icon: const Icon(Icons.history), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => HistoryScreen(api: widget.api)))),
         IconButton(tooltip: 'Sign out', icon: const Icon(Icons.logout), onPressed: widget.onSignOut),
       ]),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         Text('Hi ${widget.api.session?.name.split(' ').first ?? ''}, where to?', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 16),
-        PlaceField(api: widget.api, label: 'Pickup', icon: Icons.trip_origin, initial: _defaultPickup, onPicked: (p) => setState(() { _pickup = p; _quote = null; })),
+        const SizedBox(height: 12),
+        if (_pickup != null)
+          MapView(height: 200, pins: [MapPin(_pickup!.lat, _pickup!.lng, icon: Icons.my_location, label: 'Pickup'), if (_dropoff != null) MapPin(_dropoff!.lat, _dropoff!.lng, icon: Icons.flag, color: raastaAmber, label: 'Drop-off')], route: [if (_quote != null) ...((_quote!['route'] as List?) ?? const []).map((e) => [(e[0] as num).toDouble(), (e[1] as num).toDouble()])])
+        else
+          const SizedBox(height: 200, child: Center(child: CircularProgressIndicator())),
+        if (_locNote != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_locNote!, style: Theme.of(context).textTheme.bodySmall)),
+        const SizedBox(height: 12),
+        PlaceField(key: ValueKey(_pickup?.name), api: widget.api, label: 'Pickup', icon: Icons.trip_origin, initial: _pickup, onPicked: (p) => setState(() { _pickup = p; _quote = null; })),
         const SizedBox(height: 8),
         PlaceField(api: widget.api, label: 'Where to?', icon: Icons.flag_outlined, onPicked: (p) => setState(() { _dropoff = p; _quote = null; })),
         const SizedBox(height: 16),

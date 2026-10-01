@@ -1,0 +1,7 @@
+{
+  "name": "raasta-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": { "full-ride": "node full-ride.mjs" },
+  "dependencies": { "playwright-core": "^1.49.0" }
+}

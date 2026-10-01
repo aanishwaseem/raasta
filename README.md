@@ -7,7 +7,7 @@ Ride-hailing platform for Pakistan: passenger and driver apps, a NestJS API, a P
 | API + workers (NestJS, Postgres/PostGIS, Redis) | `backend/` | Built; unit and e2e tests pass |
 | AI service (FastAPI: ETA, demand, fraud, assistant, training pipeline) | `ai-service/` | Built; pytest passes |
 | Admin dashboard (React + Vite) | `admin/` | Built; typechecks, builds, verified against the live API |
-| Passenger and driver apps (Flutter) | `mobile/` | Core flows only (no GPS, map or realtime); see `mobile/README.md` |
+| Passenger and driver apps (Flutter) | `mobile/` | Working end to end on web builds (GPS, map, onboarding, rides, wallet, SOS); not run on devices yet, see `mobile/README.md` |
 | Docker compose, `.env.example` | repo root | Compose file validates; images not built here (no Docker daemon in the build sandbox) |
 
 Architecture, API, security, testing and roadmap docs are in `docs/`.
@@ -37,6 +37,7 @@ cd backend && npm test && npm run test:e2e
 cd ai-service && pytest
 cd admin && npm run build
 cd mobile/raasta_core && flutter test   # plus passenger_app and driver_app
+cd e2e && node full-ride.mjs            # browser E2E, see e2e/README.md
 ```
 
 ## Known limitations
@@ -45,3 +46,4 @@ cd mobile/raasta_core && flutter test   # plus passenger_app and driver_app
 - Routing defaults to straight-line (haversine); use OSRM for real road distances.
 - AI model metrics were measured on simulated data, not real trips.
 - The admin live map is a plain SVG projection, not a tile map.
+- The mobile apps poll for updates (no realtime sockets yet) and have not been run on physical devices.

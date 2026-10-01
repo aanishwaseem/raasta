@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   raasta_core:
     path: ../raasta_core
+  file_picker: ^10.3.3
 
 dev_dependencies:
   flutter_test:

@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { DriverReview } from './DriverReview';
 import { patch, post } from './api';
 import { ReasonButton } from './Actions';
 import { useFetch } from './hooks';
@@ -36,7 +37,18 @@ export function Overview() {
   );
 }
 
-export const Drivers = () => (
+export function Drivers() {
+  const [open, setOpen] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  return (
+    <>
+      <DriversList key={tick} onOpen={setOpen} />
+      {open && <DriverReview id={open} onClose={() => setOpen(null)} onChanged={() => setTick((n) => n + 1)} />}
+    </>
+  );
+}
+
+const DriversList = ({ onOpen }: { onOpen: (id: string) => void }) => (
   <ListPage<any> title="Drivers" path="/admin/drivers"
     filters={[{ key: 'status', label: 'Status', options: ['ONBOARDING', 'PENDING_REVIEW', 'APPROVED', 'REJECTED', 'SUSPENDED'] }, { key: 'q', label: 'Search name or phone' }]}
     cols={(reload) => [
@@ -48,6 +60,7 @@ export const Drivers = () => (
       { head: 'Docs pending', cell: (r) => r.pendingDocuments },
       { head: 'Actions', cell: (r) => (
         <div className="toolbar">
+          <button onClick={() => onOpen(r.id)}>{r.status === 'PENDING_REVIEW' ? 'Review' : 'Details'}</button>
           {r.status === 'PENDING_REVIEW' && <><ReasonButton label="Approve" path={`/admin/drivers/${r.id}/approve`} onDone={reload} /><ReasonButton danger label="Reject" path={`/admin/drivers/${r.id}/reject`} onDone={reload} /></>}
           {r.status === 'APPROVED' && <ReasonButton danger label="Suspend" path={`/admin/drivers/${r.id}/suspend`} onDone={reload} />}
           {r.status === 'SUSPENDED' && <ReasonButton label="Reinstate" path={`/admin/drivers/${r.id}/reinstate`} onDone={reload} />}

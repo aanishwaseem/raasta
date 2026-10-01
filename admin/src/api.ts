@@ -79,3 +79,11 @@ export async function logout(): Promise<void> {
   try { if (s) await raw('/auth/logout', { method: 'POST' }, s.accessToken); } catch { /* best effort */ }
   setSession(null);
 }
+
+/** Fetch a protected file (driver documents need the bearer token, so a plain <a href> would not work). */
+export async function fileUrl(path: string): Promise<string> {
+  let res = await raw(path, {}, getSession()?.accessToken);
+  if (res.status === 401 && (await refresh())) res = await raw(path, {}, getSession()?.accessToken);
+  if (!res.ok) throw await errorOf(res);
+  return URL.createObjectURL(await res.blob());
+}

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:raasta_core/raasta_core.dart';
 
 const _active = {'MATCHING', 'DRIVER_ASSIGNED', 'DRIVER_ARRIVING', 'DRIVER_ARRIVED', 'IN_PROGRESS'};
@@ -61,6 +62,35 @@ class _TripScreenState extends State<TripScreen> {
     }
   }
 
+  Future<void> _sos() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Send an SOS alert?'),
+        content: const Text('Raasta safety staff and your trusted contacts will be alerted with your live location.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not now')), TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Send SOS'))],
+      ),
+    );
+    if (ok != true) return;
+    final f = await DeviceLocation().current();
+    try {
+      await widget.api.post('/rides/${widget.rideId}/sos', body: f.approximate ? {} : {'location': {'lat': f.lat, 'lng': f.lng}});
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('SOS sent. Help is being alerted.')));
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('SOS could not be sent: ${e.friendly}')));
+    }
+  }
+
+  Future<void> _share() async {
+    try {
+      final r = await widget.api.post('/rides/${widget.rideId}/share', body: {}) as Map<String, dynamic>;
+      await Clipboard.setData(ClipboardData(text: r['url'] as String));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Trip link copied${(r['recipients'] ?? 0) > 0 ? ' and sent to ${r['recipients']} contact(s)' : ''}.')));
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.friendly)));
+    }
+  }
+
   Future<void> _rate(int stars) async {
     setState(() => _stars = stars);
     try {
@@ -81,7 +111,17 @@ class _TripScreenState extends State<TripScreen> {
           : ListView(padding: const EdgeInsets.all(16), children: [
               _StatusBanner(status: r['status'] as String),
               const SizedBox(height: 12),
-              Text('${r['pickup']['address']} → ${r['dropoff']['address']}'),
+              Text('${r['pickup']['address']} to ${r['dropoff']['address']}'),
+              const SizedBox(height: 12),
+              MapView(
+                height: 200,
+                pins: [
+                  MapPin((r['pickup']['lat'] as num).toDouble(), (r['pickup']['lng'] as num).toDouble(), icon: Icons.trip_origin, label: 'Pickup'),
+                  MapPin((r['dropoff']['lat'] as num).toDouble(), (r['dropoff']['lng'] as num).toDouble(), icon: Icons.flag, color: raastaAmber, label: 'Drop-off'),
+                  if (r['driver']?['location'] != null) MapPin((r['driver']['location']['lat'] as num).toDouble(), (r['driver']['location']['lng'] as num).toDouble(), icon: Icons.directions_car, color: Colors.black87, label: 'Driver'),
+                ],
+                route: ((r['route'] as List?) ?? const []).map((e) => [(e[0] as num).toDouble(), (e[1] as num).toDouble()]).toList(),
+              ),
               const SizedBox(height: 12),
               if (r['driver'] != null) _DriverCard(driver: r['driver'] as Map<String, dynamic>),
               if (r['pin'] != null && _cancellable.contains(r['status']))
@@ -89,6 +129,13 @@ class _TripScreenState extends State<TripScreen> {
               Card(child: ListTile(title: const Text('Fare'), trailing: Text(money(r['fare']['final'] ?? r['fare']['payable'])))),
               if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
               const SizedBox(height: 12),
+              if (r['status'] == 'IN_PROGRESS' || r['status'] == 'DRIVER_ARRIVED' || r['status'] == 'DRIVER_ARRIVING' || r['status'] == 'DRIVER_ASSIGNED')
+                Row(children: [
+                  Expanded(child: OutlinedButton.icon(onPressed: _share, icon: const Icon(Icons.share_outlined), label: const Text('Share trip'))),
+                  const SizedBox(width: 12),
+                  Expanded(child: OutlinedButton.icon(style: OutlinedButton.styleFrom(foregroundColor: raastaDanger), onPressed: _sos, icon: const Icon(Icons.sos), label: const Text('SOS'))),
+                ]),
+              const SizedBox(height: 8),
               if (_cancellable.contains(r['status'])) OutlinedButton(onPressed: _cancel, child: const Text('Cancel ride')),
               if (r['status'] == 'NO_DRIVERS') FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Back to fares')),
               if (r['status'] == 'COMPLETED')
