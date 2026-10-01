@@ -5,7 +5,7 @@ import 'screens/gate_screen.dart';
 
 const apiUrl = String.fromEnvironment('API_URL', defaultValue: 'http://10.0.2.2:3000/api/v1');
 
-void main() => runApp(DriverApp(api: ApiClient(baseUrl: apiUrl)));
+void main() => runApp(DriverApp(api: ApiClient(baseUrl: apiUrl, useRealtime: true)));
 
 class DriverApp extends StatefulWidget {
   DriverApp({super.key, required this.api, DeviceLocation? location}) : location = location ?? DeviceLocation();

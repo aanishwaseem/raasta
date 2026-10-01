@@ -46,4 +46,4 @@ cd e2e && node full-ride.mjs            # browser E2E, see e2e/README.md
 - Routing defaults to straight-line (haversine); use OSRM for real road distances.
 - AI model metrics were measured on simulated data, not real trips.
 - The admin live map is a plain SVG projection, not a tile map.
-- The mobile apps poll for updates (no realtime sockets yet) and have not been run on physical devices.
+- The mobile apps use realtime pushes on trip screens (offers still poll) and have not been run on physical devices.

@@ -21,6 +21,8 @@ class _TripScreenState extends State<TripScreen> {
   Map<String, dynamic>? _ride;
   String? _error;
   Timer? _timer;
+  RealtimeClient? _rt;
+  StreamSubscription<String>? _rtSub;
   int _stars = 0;
   bool _rated = false;
 
@@ -28,12 +30,17 @@ class _TripScreenState extends State<TripScreen> {
   void initState() {
     super.initState();
     _poll();
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _poll());
+    _rt = widget.api.realtime(rideId: widget.rideId);
+    _rtSub = _rt?.events.listen((_) => _poll());
+    // pushes make updates instant; polling stays as the fallback
+    _timer = Timer.periodic(Duration(seconds: _rt == null ? 3 : 10), (_) => _poll());
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _rtSub?.cancel();
+    _rt?.dispose();
     super.dispose();
   }
 
