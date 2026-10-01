@@ -191,6 +191,14 @@ export class MatchingService implements OnModuleInit {
         config().MATCH_OFFER_TIMEOUT_MS / 1000,
       ],
     );
+    // Ranking calls the AI service and can take a while (a cold start takes seconds). If the passenger cancelled
+    // meanwhile, drop the offer instead of sending a driver a request for a ride that no longer exists.
+    const stillMatching = await this.db.one(`SELECT 1 FROM rides WHERE id = $1 AND status = 'MATCHING'`, [rideId]);
+    if (!stillMatching) {
+      await this.db.query(`UPDATE ride_requests SET status = 'CANCELLED', responded_at = now() WHERE id = $1`, [offer!.id]);
+      await release();
+      return;
+    }
     if (chosen.status === 'IDLE') await this.presence.setStatus(chosen.driverId, 'OFFERED');
     await this.queue.add('matching', 'offer-expire', { offerId: offer!.id }, { delay: config().MATCH_OFFER_TIMEOUT_MS, jobId: `offer-${offer!.id}` });
 
