@@ -68,6 +68,29 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _editServer() async {
+    final c = TextEditingController(text: Uri.tryParse(widget.api.baseUrl)?.authority ?? '');
+    final v = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Server address'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('The computer running Raasta, as seen from this phone (same Wi-Fi). Example: 192.168.1.20:3000'),
+          const SizedBox(height: 12),
+          TextField(controller: c, autofocus: true, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Address')),
+        ]),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text('Save'))],
+      ),
+    );
+    if (v == null) return;
+    try {
+      await widget.api.setServer(v);
+      if (mounted) setState(() => _error = null);
+    } on ArgumentError catch (e) {
+      if (mounted) setState(() => _error = e.message.toString());
+    }
+  }
+
   @override
   void dispose() {
     _id.dispose();
@@ -102,6 +125,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 20),
                 FilledButton(onPressed: _busy || (_phone && _codeSent && _code.text.trim().length != 6) ? null : _submit, child: _busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_phone ? (_codeSent ? 'Verify and continue' : 'Send code') : _signup ? 'Create account' : 'Sign in')),
                 if (!_phone) TextButton(onPressed: _busy ? null : () => setState(() { _signup = !_signup; _error = null; }), child: Text(_signup ? 'I already have an account' : 'Create an account')),
+                TextButton(onPressed: _busy ? null : _editServer, child: Text('Server: ${Uri.tryParse(widget.api.baseUrl)?.authority ?? widget.api.baseUrl}')),
                 TextButton(onPressed: _busy ? null : () => setState(() { _phone = !_phone; _signup = false; _codeSent = false; _error = null; }), child: Text(_phone ? 'Use email and password instead' : 'Use a phone code instead')),
               ]),
             ),

@@ -112,7 +112,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build images and start the stack
-        run: docker compose up -d --build
+        run: docker compose --profile web up -d --build
       - name: Wait for the API and AI service
         run: |
           for i in $(seq 1 60); do
@@ -129,5 +129,5 @@ jobs:
       - name: Show logs on failure
         if: failure()
         run: docker compose ps -a && docker compose logs --tail=80
-      - run: docker compose down -v
+      - run: docker compose --profile web down -v
         if: always()

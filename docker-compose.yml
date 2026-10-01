@@ -100,9 +100,10 @@ services:
     ports: ["5173:5173"]
     depends_on: [api]
 
-  # Demo apps in the browser. DEMO_LOCATION pins the phone's GPS (Liberty Market, Lahore) so rides work from anywhere;
+  # Demo apps in the browser (optional, heavy first build: docker compose --profile web up --build). DEMO_LOCATION pins the phone's GPS (Liberty Market, Lahore) so rides work from anywhere;
   # set DEMO_LOCATION= (empty) to use the browser's real location instead.
   passenger-web:
+    profiles: ["web"]
     build:
       context: ./mobile
       dockerfile: Dockerfile.web
@@ -114,6 +115,7 @@ services:
     depends_on: [api]
 
   driver-web:
+    profiles: ["web"]
     build:
       context: ./mobile
       dockerfile: Dockerfile.web

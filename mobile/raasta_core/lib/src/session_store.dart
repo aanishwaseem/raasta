@@ -19,6 +19,8 @@ abstract class SessionStore {
   Future<Session?> read();
   Future<void> write(Session? session);
   Future<String> deviceId();
+  Future<String?> serverUrl();
+  Future<void> writeServerUrl(String? url);
 }
 
 /// Persists the session on the device. Tokens never leave this store except in Authorization headers.
@@ -44,6 +46,15 @@ class PrefsSessionStore implements SessionStore {
   }
 
   @override
+  Future<String?> serverUrl() async => (await SharedPreferences.getInstance()).getString('raasta.server');
+
+  @override
+  Future<void> writeServerUrl(String? url) async {
+    final p = await SharedPreferences.getInstance();
+    url == null ? await p.remove('raasta.server') : await p.setString('raasta.server', url);
+  }
+
+  @override
   Future<String> deviceId() async {
     final p = await SharedPreferences.getInstance();
     var id = p.getString('raasta.device');
@@ -63,4 +74,9 @@ class MemorySessionStore implements SessionStore {
   Future<void> write(Session? session) async => _s = session;
   @override
   Future<String> deviceId() async => 'test-device-1';
+  String? _server;
+  @override
+  Future<String?> serverUrl() async => _server;
+  @override
+  Future<void> writeServerUrl(String? url) async => _server = url;
 }

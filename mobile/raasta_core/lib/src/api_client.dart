@@ -36,7 +36,9 @@ class ApiClient {
       : store = store ?? PrefsSessionStore(),
         _http = client ?? http.Client();
 
-  final String baseUrl;
+  /// API root, e.g. http://192.168.1.20:3000/api/v1. Phones can't reach the computer as "localhost",
+  /// so people running the demo set this on the sign-in screen; it is remembered on the device.
+  String baseUrl;
 
   /// Opt in to the websocket push channel (apps enable it; tests leave it off).
   final bool useRealtime;
@@ -57,7 +59,25 @@ class ApiClient {
     return RealtimeClient(url: origin, tokenProvider: () => _session?.accessToken, rideId: rideId)..connect();
   }
 
-  Future<Session?> restore() async => _session = await store.read();
+  Future<Session?> restore() async {
+    final saved = await store.serverUrl();
+    if (saved != null && saved.isNotEmpty) baseUrl = saved;
+    return _session = await store.read();
+  }
+
+  /// Accepts "192.168.1.20", "192.168.1.20:3000" or a full URL and stores the normalised API root.
+  Future<void> setServer(String input) async {
+    var v = input.trim();
+    if (v.isEmpty) throw ArgumentError('Enter the address of the Raasta server.');
+    if (!v.contains('://')) v = 'http://$v';
+    final u = Uri.parse(v);
+    if (u.host.isEmpty) throw ArgumentError('That address does not look right.');
+    final withPort = u.hasPort ? u : u.replace(port: 3000);
+    final path = u.path.isEmpty || u.path == '/' ? '/api/v1' : u.path.replaceAll(RegExp(r'/+$'), '');
+    baseUrl = withPort.replace(path: path).toString();
+    await store.writeServerUrl(baseUrl);
+  }
+
 
   Future<Session> login(String identifier, String password, {required String requiredRole}) async {
     final res = await _send('POST', '/auth/login', body: {
