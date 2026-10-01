@@ -46,6 +46,8 @@ interface StoredQuote {
 export class RidesService implements OnModuleInit {
   private readonly logger = new Logger(RidesService.name);
   private readonly traceThrottle = new Map<string, number>();
+  /** Per-driver tail of the GPS processing chain, so pings are handled one at a time and in order. */
+  private readonly locationChains = new Map<string, Promise<void>>();
 
   constructor(
     private readonly db: DatabaseService,
@@ -68,7 +70,7 @@ export class RidesService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.events.on('driver.location', (e) => this.onDriverLocation(e.driverId, e.rideIds, { lat: e.lat, lng: e.lng }, e.recordedAt, e.speedMps));
+    this.events.on('driver.location', (e) => this.enqueueLocation(e.driverId, () => this.onDriverLocation(e.driverId, e.rideIds, { lat: e.lat, lng: e.lng }, e.recordedAt, e.speedMps)));
     this.realtime.registerHandler('ride.subscribe', async (user, payload) => {
       const rideId = (payload as { rideId?: string })?.rideId;
       if (!rideId || !/^[0-9a-f-]{36}$/i.test(rideId)) throw new AppError('VALIDATION_FAILED', 'rideId is required');
@@ -436,6 +438,21 @@ export class RidesService implements OnModuleInit {
   }
 
   // ------------------------------------------------------------ location stream
+  /**
+   * GPS events arrive fire-and-forget. Handling two pings of the same driver at once makes the
+   * route-deviation counter (read, update, write) lose updates and raise the same alert twice,
+   * so each driver's pings are processed strictly one after another.
+   */
+  private enqueueLocation(driverId: string, job: () => Promise<void>): void {
+    const tail = (this.locationChains.get(driverId) ?? Promise.resolve())
+      .then(job)
+      .catch((err: Error) => this.logger.error(`Location handling failed for driver ${driverId}: ${err.message}`));
+    this.locationChains.set(driverId, tail);
+    void tail.then(() => {
+      if (this.locationChains.get(driverId) === tail) this.locationChains.delete(driverId);
+    });
+  }
+
   async onDriverLocation(driverId: string, rideIds: string[], point: LatLng, recordedAt: Date, speedMps?: number) {
     for (const rideId of rideIds) {
       let ride = await this.rides.find(rideId);
