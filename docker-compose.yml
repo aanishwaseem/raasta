@@ -24,9 +24,13 @@ services:
     ports: ["5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U raasta -d raasta"]
-      interval: 5s
-      retries: 10
+      # TCP check: on first boot the image runs a temporary socket-only server and then restarts,
+      # so a socket check goes healthy too early and dependants hit "connection refused"
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U raasta -d raasta"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
 
   redis:
     image: redis:7-alpine
@@ -41,6 +45,7 @@ services:
   migrate:
     build: ./backend
     command: ["node", "dist/database/migrate.js"]
+    restart: on-failure:5
     environment: *api-env
     depends_on:
       postgres: { condition: service_healthy }
