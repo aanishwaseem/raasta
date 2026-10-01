@@ -1,0 +1,73 @@
+name: Android APKs
+
+# Builds installable demo APKs of the rider and driver apps. On main they are published to the
+# "demo-latest" release; on pull requests they are attached to the run so the build is verified.
+on:
+  push:
+    branches: [main]
+    paths: ["mobile/**", ".github/workflows/apk.yml"]
+  pull_request:
+    paths: ["mobile/**", ".github/workflows/apk.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: passenger_app
+            name: raasta-rider
+          - package: driver_app
+            name: raasta-driver
+    defaults:
+      run:
+        working-directory: mobile/${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.5
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # The phone address is entered on the sign-in screen, so one APK works on any network.
+      # DEMO_LOCATION pins the GPS to Lahore so the seeded data works from anywhere.
+      - run: >
+          flutter build apk --release
+          --dart-define=API_URL=http://10.0.2.2:3000/api/v1
+          --dart-define=DEMO_LOCATION=31.5102,74.3441
+      - run: cp build/app/outputs/flutter-apk/app-release.apk ${{ github.workspace }}/${{ matrix.name }}.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ github.workspace }}/${{ matrix.name }}.apk
+
+  publish:
+    needs: apk
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: apks
+          merge-multiple: true
+      - name: Publish the demo release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete demo-latest --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create demo-latest apks/*.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --prerelease --title "Raasta demo apps (Android)" \
+            --notes "Debug-signed demo APKs for the rider and driver apps. Install, then set the server address on the sign-in screen (see DEMO.md). Built from $GITHUB_SHA."

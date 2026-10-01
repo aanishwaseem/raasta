@@ -13,6 +13,7 @@ Map<String, dynamic> loginBody({List<String> roles = const ['PASSENGER']}) => {
 http.Response json(Object body, [int status = 200]) => http.Response(jsonEncode(body), status, headers: {'content-type': 'application/json'});
 
 void main() {
+  serverUrlTests();
   test('login stores the session and rejects the wrong role', () async {
     final api = ApiClient(baseUrl: 'http://x/api/v1', store: MemorySessionStore(), client: MockClient((_) async => json(loginBody())));
     final s = await api.login('b@x.test', 'pw', requiredRole: 'PASSENGER');
@@ -92,5 +93,20 @@ void main() {
     expect(money(null), '–');
     expect(prettyStatus('DRIVER_ARRIVING'), 'Driver arriving');
     expect(km(12888), '12.9 km');
+  });
+}
+
+void serverUrlTests() {
+  test('setServer normalises addresses and remembers them', () async {
+    final store = MemorySessionStore();
+    final api = ApiClient(baseUrl: 'http://10.0.2.2:3000/api/v1', store: store);
+    await api.setServer('192.168.1.20');
+    expect(api.baseUrl, 'http://192.168.1.20:3000/api/v1');
+    await api.setServer('http://pc.local:4000/');
+    expect(api.baseUrl, 'http://pc.local:4000/api/v1');
+    final other = ApiClient(baseUrl: 'http://10.0.2.2:3000/api/v1', store: store);
+    await other.restore();
+    expect(other.baseUrl, 'http://pc.local:4000/api/v1');
+    expect(() => api.setServer('  '), throwsArgumentError);
   });
 }

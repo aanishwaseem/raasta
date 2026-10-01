@@ -3,13 +3,26 @@
 One command starts the API, AI service, admin dashboard and the passenger and driver apps (as web apps), with test data loaded.
 
 ```bash
-docker compose up --build        # first build takes a few minutes (it builds Flutter)
+docker compose up --build        # API, AI service, admin dashboard, database
+```
+
+## On an Android phone (recommended)
+1. Start the stack above on your computer and keep the phone on the same Wi-Fi.
+2. On the phone, open https://github.com/aanishwaseem/raasta/releases/tag/demo-latest and install **raasta-rider.apk** (and **raasta-driver.apk** on a second phone, or the same phone).
+   Android asks you to allow installs from your browser the first time.
+3. Find your computer's address (Windows: `ipconfig`, look for the IPv4 address, e.g. 192.168.1.20). Allow Docker/Node through the Windows firewall if asked.
+4. On the app's sign-in screen tap **Server** and enter `192.168.1.20:3000` (your address). Sign in with the accounts below.
+The phone GPS is pinned to Liberty Market, Lahore so the seeded data works from anywhere.
+
+## In the browser instead
+```bash
+docker compose --profile web up --build   # also builds both apps as web apps (large first build, needs a few GB of disk)
 ```
 
 | What | URL |
 |---|---|
-| Passenger app | http://localhost:8080 |
-| Driver app | http://localhost:8081 |
+| Passenger app (web profile) | http://localhost:8080 |
+| Driver app (web profile) | http://localhost:8081 |
 | Admin dashboard | http://localhost:5173 |
 | API docs | http://localhost:3000/api/docs |
 
