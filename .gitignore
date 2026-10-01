@@ -22,3 +22,4 @@ screenshots/out/
 ai-service/models_store/*
 !ai-service/models_store/.gitkeep
 backend/storage*/
+dump.rdb
