@@ -22,7 +22,7 @@ No deep learning is used. Nothing here needs it yet, and the data does not exist
 | 1. Launch | Every predictor serves its **baseline** (rules/statistics). The AI service works with no model artifacts. |
 | 2. Collect | Every prediction is logged to `ai_predictions` with features, and the **actual** is attached when known (pickup arrival, trip completion, offer response). |
 | 3. Train | `POST /admin/ai/train` (or `python -m pipeline.run`) extracts → validates → builds features → trains → evaluates on a time-based holdout **against the baseline** → registers a version. |
-| 4. Promote / A/B | A version becomes `ACTIVE` only if it beats the baseline on the holdout metric **and** an admin activates it. `AB_TEST_FRACTION` routes a share of traffic to the candidate (by hashed entity id) so online error can be compared. |
+| 4. Promote / A/B | A version becomes `ACTIVE` only if it beats the baseline on the holdout metric **and** an admin activates it. (A/B routing of a traffic share to a candidate is **not implemented**; online error of the active model is compared through `ai_predictions`.) |
 
 The development seed creates synthetic historical rides so the pipeline can be exercised end to end. Models trained
 on that data are registered with `trained_on_synthetic = true`, and the admin UI labels them so. **Their metrics say
@@ -47,7 +47,7 @@ nothing about real-world accuracy and must not be quoted as such.**
 | Output | expected requests next hour, level HIGH/MEDIUM/LOW (relative to the city's zone distribution), supply gap |
 | Metric | MAE on hourly zone counts, plus level accuracy |
 | Baseline | smoothed seasonal mean (zone × hour-of-week), blended with recent-hour persistence. With no history it uses persistence only. |
-| Model | `GradientBoostingRegressor` (Poisson loss) on lagged/seasonal features |
+| Model | `HistGradientBoostingRegressor` (Poisson loss) on lagged/seasonal features |
 | Fallback | persistence of the last hour's request count |
 
 ### Cancellation probability (driver-side, per candidate)
