@@ -35,7 +35,7 @@ flutter analyze
 ## Not done yet (be aware before shipping)
 - **Never run on a physical device or Android/iOS emulator** from this environment. Android and iOS location permissions are declared, but only the web builds were exercised.
 - **Plain HTTP is allowed in Android debug builds only** (`src/debug/AndroidManifest.xml`). Release builds need an HTTPS API.
-- **Polling, not realtime.** Trip and offer screens poll every 3s (driver position and offers can lag a few seconds). The API's Socket.IO channel is not used yet.
+- **Realtime on the trip screens only.** Trip screens subscribe to the API's Socket.IO channel and refresh on pushes (verified by `raasta_core/test/live_realtime_test.dart`), polling every 10s as a fallback. The driver's offer screen still polls every 3s.
 - **Driver GPS only reports while the app is open.** No background location service, so a locked phone stops pings.
 - Map tiles default to the public OpenStreetMap servers, which are not meant for production traffic. Set `--dart-define=TILE_URL=https://your-tiles/{z}/{x}/{y}.png`.
 - **Wallet top-up uses the API's mock gateway** with a test card token. A real gateway needs its card SDK.

@@ -5,7 +5,7 @@ import 'screens/home_screen.dart';
 
 const apiUrl = String.fromEnvironment('API_URL', defaultValue: 'http://10.0.2.2:3000/api/v1');
 
-void main() => runApp(PassengerApp(api: ApiClient(baseUrl: apiUrl)));
+void main() => runApp(PassengerApp(api: ApiClient(baseUrl: apiUrl, useRealtime: true)));
 
 class PassengerApp extends StatefulWidget {
   PassengerApp({super.key, required this.api, DeviceLocation? location}) : location = location ?? DeviceLocation();

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'realtime_client.dart';
 import 'session_store.dart';
 
 class ApiException implements Exception {
@@ -31,11 +32,14 @@ class ApiException implements Exception {
 /// HTTP client for the Raasta API: bearer auth, single-flight token refresh on 401,
 /// and Idempotency-Key support for mutating requests that must not be applied twice.
 class ApiClient {
-  ApiClient({required this.baseUrl, SessionStore? store, http.Client? client})
+  ApiClient({required this.baseUrl, SessionStore? store, http.Client? client, this.useRealtime = false})
       : store = store ?? PrefsSessionStore(),
         _http = client ?? http.Client();
 
   final String baseUrl;
+
+  /// Opt in to the websocket push channel (apps enable it; tests leave it off).
+  final bool useRealtime;
   final SessionStore store;
   final http.Client _http;
   Session? _session;
@@ -44,6 +48,14 @@ class ApiClient {
 
   Session? get session => _session;
   Stream<void> get onLoggedOut => _logout.stream;
+
+  /// A connected push client, or null when realtime is off. Caller disposes it.
+  RealtimeClient? realtime({String? rideId}) {
+    if (!useRealtime) return null;
+    final u = Uri.parse(baseUrl);
+    final origin = '${u.scheme}://${u.host}${u.hasPort ? ':${u.port}' : ''}';
+    return RealtimeClient(url: origin, tokenProvider: () => _session?.accessToken, rideId: rideId)..connect();
+  }
 
   Future<Session?> restore() async => _session = await store.read();
 

@@ -20,6 +20,8 @@ class _DriverTripScreenState extends State<DriverTripScreen> {
   String? _error;
   bool _busy = false;
   Timer? _timer;
+  RealtimeClient? _rt;
+  StreamSubscription<String>? _rtSub;
   Timer? _pingTimer;
   final _pin = TextEditingController();
 
@@ -27,13 +29,18 @@ class _DriverTripScreenState extends State<DriverTripScreen> {
   void initState() {
     super.initState();
     _poll();
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _poll());
+    _rt = widget.api.realtime(rideId: widget.rideId);
+    _rtSub = _rt?.events.listen((_) => _poll());
+    // pushes make updates instant; polling stays as the fallback
+    _timer = Timer.periodic(Duration(seconds: _rt == null ? 3 : 10), (_) => _poll());
     _pingTimer = Timer.periodic(const Duration(seconds: 5), (_) => _ping().catchError((_) {}));
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _rtSub?.cancel();
+    _rt?.dispose();
     _pingTimer?.cancel();
     _pin.dispose();
     super.dispose();
