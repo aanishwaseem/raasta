@@ -1,0 +1,93 @@
+# Local development stack: docker compose up --build
+# Then seed test data: docker compose exec api npm run db:seed
+name: raasta
+
+x-api-env: &api-env
+  DATABASE_URL: postgres://raasta:${POSTGRES_PASSWORD:-raasta_dev_password}@postgres:5432/raasta
+  REDIS_URL: redis://redis:6379/0
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-only-access-secret-change-me-0123456789}
+  OTP_HMAC_SECRET: ${OTP_HMAC_SECRET:-dev-only-otp-secret-change-me-0123456789abc}
+  DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:-ZGV2LW9ubHktZW5jcnlwdGlvbi1rZXktMzJieXRlcyE=}
+  AI_INTERNAL_TOKEN: ${AI_INTERNAL_TOKEN:-dev-only-ai-internal-token}
+  METRICS_TOKEN: ${METRICS_TOKEN:-dev-only-metrics-token}
+  AI_SERVICE_URL: http://ai-service:8000
+  OTP_DEV_ECHO: ${OTP_DEV_ECHO:-true}
+  STORAGE_DIR: /app/storage
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: raasta
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-raasta_dev_password}
+      POSTGRES_DB: raasta
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raasta -d raasta"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["6379:6379"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  migrate:
+    build: ./backend
+    command: ["node", "dist/database/migrate.js"]
+    environment: *api-env
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    build: ./backend
+    environment:
+      <<: *api-env
+      RUN_WORKERS_IN_API: "false"
+    ports: ["3000:3000"]
+    volumes: [storage:/app/storage]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      ai-service: { condition: service_started }
+
+  worker:
+    build: ./backend
+    command: ["node", "dist/worker.js"]
+    environment: *api-env
+    volumes: [storage:/app/storage]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  ai-service:
+    build: ./ai-service
+    environment:
+      APP_ENV: development
+      AI_INTERNAL_TOKEN: ${AI_INTERNAL_TOKEN:-dev-only-ai-internal-token}
+      DATABASE_URL: postgres://raasta:${POSTGRES_PASSWORD:-raasta_dev_password}@postgres:5432/raasta
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports: ["8000:8000"]
+    volumes: [models:/srv/models_store]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  admin:
+    build:
+      context: ./admin
+      args:
+        VITE_API_URL: http://localhost:3000/api/v1
+    ports: ["5173:5173"]
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  redisdata:
+  storage:
+  models:
