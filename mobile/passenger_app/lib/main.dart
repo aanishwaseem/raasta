@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:raasta_core/raasta_core.dart';
 
-import 'screens/home_screen.dart';
+import 'screens/shell.dart';
 
 const apiUrl = String.fromEnvironment('API_URL', defaultValue: 'http://10.0.2.2:3000/api/v1');
 
@@ -37,7 +37,7 @@ class _PassengerAppState extends State<PassengerApp> {
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
           : widget.api.session == null
               ? LoginScreen(api: widget.api, role: 'PASSENGER', title: 'Get a ride', onLoggedIn: () => setState(() {}))
-              : HomeScreen(api: widget.api, location: widget.location, onSignOut: () async { await widget.api.logout(); setState(() {}); }),
+              : AppShell(api: widget.api, location: widget.location, onSignOut: () async { await widget.api.logout(); if (mounted) setState(() {}); }),
     );
   }
 }
