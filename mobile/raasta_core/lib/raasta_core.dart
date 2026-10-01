@@ -6,3 +6,4 @@ export 'src/theme.dart';
 export 'src/device_location.dart';
 export 'src/map_view.dart';
 export 'src/realtime_client.dart';
+export 'src/location_reporter.dart';

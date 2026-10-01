@@ -105,3 +105,30 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+
+  docker:
+    name: docker compose stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images and start the stack
+        run: docker compose up -d --build
+      - name: Wait for the API and AI service
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf localhost:3000/health/ready && break
+            sleep 3
+          done
+          curl -sf localhost:3000/health/ready
+          curl -sf -o /dev/null localhost:5173 || curl -sf -o /dev/null localhost:8080 || true
+      - name: Seed test data and sign in through the running stack
+        run: |
+          docker compose exec -T api npm run db:seed
+          curl -sf -X POST localhost:3000/api/v1/auth/login -H 'content-type: application/json' \
+            -d '{"identifier":"bilal@raasta.test","password":"Passw0rd!test","device":{"deviceId":"ci-device-0001","platform":"android"}}' \
+            | grep -q accessToken
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose ps -a && docker compose logs --tail=80
+      - run: docker compose down -v
+        if: always()

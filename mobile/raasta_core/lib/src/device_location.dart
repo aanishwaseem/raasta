@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:geolocator/geolocator.dart';
 
 class Fix {
@@ -59,6 +60,42 @@ class DeviceLocation {
     try {
       if (!await _ensure()) return;
       yield* Geolocator.getPositionStream(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 10)).map(_from);
+    } catch (_) {
+      lastProblem ??= 'Location updates stopped.';
+    }
+  }
+
+  /// Fixes that keep arriving while the app is in the background (drivers). Android shows an ongoing
+  /// notification (foreground service); iOS shows the blue location indicator. Needs "always" permission
+  /// to survive the screen locking, so we ask for it only when the user is already online.
+  Stream<Fix> track() async* {
+    try {
+      if (!await _ensure()) return;
+      final LocationSettings settings;
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        settings = AndroidSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10,
+          intervalDuration: const Duration(seconds: 5),
+          foregroundNotificationConfig: const ForegroundNotificationConfig(
+            notificationTitle: 'Raasta driver',
+            notificationText: 'Sharing your location while you are online',
+            enableWakeLock: true,
+          ),
+        );
+      } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+        settings = AppleSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10,
+          activityType: ActivityType.automotiveNavigation,
+          pauseLocationUpdatesAutomatically: false,
+          showBackgroundLocationIndicator: true,
+          allowBackgroundLocationUpdates: true,
+        );
+      } else {
+        settings = const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 10);
+      }
+      yield* Geolocator.getPositionStream(locationSettings: settings).map(_from);
     } catch (_) {
       lastProblem ??= 'Location updates stopped.';
     }

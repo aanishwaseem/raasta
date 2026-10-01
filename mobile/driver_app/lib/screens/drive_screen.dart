@@ -24,7 +24,9 @@ class _DriveScreenState extends State<DriveScreen> {
   Map<String, dynamic>? _offer;
   Fix? _pos;
   Timer? _offerTimer;
-  Timer? _pingTimer;
+  LocationReporter? _reporter;
+  RealtimeClient? _rt;
+  StreamSubscription<String>? _rtSub;
 
   @override
   void initState() {
@@ -35,7 +37,9 @@ class _DriveScreenState extends State<DriveScreen> {
   @override
   void dispose() {
     _offerTimer?.cancel();
-    _pingTimer?.cancel();
+    _reporter?.stop();
+    _rtSub?.cancel();
+    _rt?.dispose();
     super.dispose();
   }
 
@@ -59,7 +63,10 @@ class _DriveScreenState extends State<DriveScreen> {
       if (_online) {
         await widget.api.post('/driver/offline');
         _offerTimer?.cancel();
-        _pingTimer?.cancel();
+        _reporter?.stop();
+        _rtSub?.cancel();
+        _rt?.dispose();
+        _rt = null;
         setState(() { _online = false; _offer = null; });
       } else {
         final p = await widget.location.current();
@@ -70,23 +77,17 @@ class _DriveScreenState extends State<DriveScreen> {
         await widget.api.post('/driver/online', body: {'lat': p.lat, 'lng': p.lng});
         _pos = p;
         setState(() => _online = true);
-        _offerTimer = Timer.periodic(const Duration(seconds: 3), (_) => _pollOffer());
-        _pingTimer = Timer.periodic(const Duration(seconds: 5), (_) => _ping());
+        _rt = widget.api.realtime();
+        _rtSub = _rt?.events.listen((_) => _pollOffer());
+        // pushes deliver offers instantly; polling is the fallback
+        _offerTimer = Timer.periodic(Duration(seconds: _rt == null ? 3 : 10), (_) => _pollOffer());
+        _reporter = LocationReporter(widget.api, widget.location, onFix: (f) { if (mounted) setState(() => _pos = f); })..start();
       }
     } on ApiException catch (e) {
       setState(() => _error = e.friendly);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-  }
-
-  Future<void> _ping() async {
-    try {
-      final p = await widget.location.current();
-      if (p.approximate) return;
-      if (mounted) setState(() => _pos = p);
-      await widget.api.post('/driver/location', body: {'lat': p.lat, 'lng': p.lng, if (p.heading != null) 'heading': p.heading, if (p.speed != null) 'speed': p.speed, if (p.accuracy != null) 'accuracy': p.accuracy});
-    } on ApiException {/* next ping retries */}
   }
 
   Future<void> _pollOffer() async {

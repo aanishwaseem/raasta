@@ -68,5 +68,11 @@
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Raasta uses your location to match you with riders and track trips.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Raasta shares your position with the rider during a trip, even when the screen is off.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 </dict>
 </plist>
