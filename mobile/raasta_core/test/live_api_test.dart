@@ -53,4 +53,14 @@ void main() {
     expect(earn['trips'], greaterThan(0));
     await drv.post('/driver/offline');
   }, skip: url == null ? 'set RAASTA_LIVE_API to run' : false);
+
+  test('phone code sign-in creates a rider and signs in (needs OTP_DEV_ECHO=true on the API)', () async {
+    final api = ApiClient(baseUrl: url!, store: MemorySessionStore());
+    final phone = '+92301${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}';
+    final r = await api.requestOtp(phone);
+    expect(r['devCode'], isNotNull, reason: 'start the API with OTP_DEV_ECHO=true');
+    final s = await api.verifyOtp(phone, r['devCode'] as String, fullName: 'Code Rider', requiredRole: 'PASSENGER');
+    expect(s.roles, contains('PASSENGER'));
+    expect(await api.get('/wallet'), isA<Map>());
+  }, skip: url == null ? 'set RAASTA_LIVE_API to run' : false);
 }

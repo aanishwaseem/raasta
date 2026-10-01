@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsDefined,
   IsEmail,
   IsIn,
   IsNotEmpty,
@@ -31,13 +32,13 @@ export class RegisterDto {
   password: string;
   @ApiProperty({ enum: ['PASSENGER', 'DRIVER'] }) @IsIn(['PASSENGER', 'DRIVER']) role: 'PASSENGER' | 'DRIVER';
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(20) referralCode?: string;
-  @ApiProperty({ type: DeviceDto }) @ValidateNested() @Type(() => DeviceDto) device: DeviceDto;
+  @ApiProperty({ type: DeviceDto }) @IsDefined() @ValidateNested() @Type(() => DeviceDto) device: DeviceDto;
 }
 
 export class LoginDto {
   @ApiProperty({ description: 'email or phone' }) @IsString() @IsNotEmpty() @MaxLength(254) identifier: string;
   @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(128) password: string;
-  @ApiProperty({ type: DeviceDto }) @ValidateNested() @Type(() => DeviceDto) device: DeviceDto;
+  @ApiProperty({ type: DeviceDto }) @IsDefined() @ValidateNested() @Type(() => DeviceDto) device: DeviceDto;
 }
 
 export class OtpRequestDto {
@@ -58,7 +59,7 @@ export class OtpVerifyDto {
   @MaxLength(80)
   fullName?: string;
   @ApiPropertyOptional({ enum: ['PASSENGER', 'DRIVER'] }) @IsOptional() @IsIn(['PASSENGER', 'DRIVER']) role?: 'PASSENGER' | 'DRIVER';
-  @ApiProperty({ type: DeviceDto }) @ValidateNested() @Type(() => DeviceDto) device: DeviceDto;
+  @ApiProperty({ type: DeviceDto }) @IsDefined() @ValidateNested() @Type(() => DeviceDto) device: DeviceDto;
 }
 
 export class OAuthDto {
@@ -66,7 +67,7 @@ export class OAuthDto {
   @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(4096) idToken: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) fullName?: string;
   @ApiPropertyOptional({ enum: ['PASSENGER', 'DRIVER'] }) @IsOptional() @IsIn(['PASSENGER', 'DRIVER']) role?: 'PASSENGER' | 'DRIVER';
-  @ApiProperty({ type: DeviceDto }) @ValidateNested() @Type(() => DeviceDto) device: DeviceDto;
+  @ApiProperty({ type: DeviceDto }) @IsDefined() @ValidateNested() @Type(() => DeviceDto) device: DeviceDto;
 }
 
 export class RefreshDto {

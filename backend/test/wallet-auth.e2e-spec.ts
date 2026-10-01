@@ -88,6 +88,17 @@ describe('auth', () => {
     expect(after.status).toBe(401);
   });
 
+  it('12b2. a request without a device is a 400, not a server error', async () => {
+    for (const [path, body] of [
+      ['/api/v1/auth/login', { identifier: 'x@y.test', password: 'whatever1' }],
+      ['/api/v1/auth/otp/verify', { phone: '+923001110000', code: '123456' }],
+      ['/api/v1/auth/register', { fullName: 'No Device', email: 'nodevice@x.test', password: 'Passw0rd1', role: 'PASSENGER' }],
+    ] as const) {
+      const r = await t.http.post(path).send(body);
+      expect(r.status).toBe(400);
+    }
+  });
+
   it('12c. RBAC: passengers cannot use driver or admin endpoints', async () => {
     const p = await t.login('ayesha@raasta.test');
     expect((await t.call(p, 'get', '/admin/analytics/kpis')).status).toBe(403);

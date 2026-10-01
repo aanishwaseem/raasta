@@ -4,6 +4,9 @@ import 'package:latlong2/latlong.dart';
 
 import 'theme.dart';
 
+/// Override with `--dart-define=TILE_URL=https://your-tiles/{z}/{x}/{y}.png` for production (the public OSM servers have a usage policy).
+const _tileUrl = String.fromEnvironment('TILE_URL', defaultValue: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png');
+
 class MapPin {
   const MapPin(this.lat, this.lng, {required this.icon, this.color = raastaTeal, this.label});
   final double lat;
@@ -16,7 +19,7 @@ class MapPin {
 /// OpenStreetMap tiles via flutter_map (no API key). Tiles need internet; pins and route still render without them.
 /// For production traffic use your own tile server or a paid provider: the public OSM tile servers have a usage policy.
 class MapView extends StatelessWidget {
-  const MapView({super.key, required this.pins, this.route = const [], this.height = 260, this.tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'});
+  const MapView({super.key, required this.pins, this.route = const [], this.height = 260, this.tileUrl = _tileUrl});
   final List<MapPin> pins;
   final List<List<double>> route;
   final double height;

@@ -72,6 +72,21 @@ void main() {
     expect(e500.friendly, isNot(contains('stack')));
   });
 
+  test('phone code sign-in sends the code request and stores the session', () async {
+    final seen = <String>[];
+    final api = ApiClient(baseUrl: 'http://x/api/v1', store: MemorySessionStore(), client: MockClient((req) async {
+      seen.add('${req.url.path} ${req.body}');
+      if (req.url.path.endsWith('/otp/request')) return json({'sent': true, 'devCode': '123456'});
+      return json(loginBody());
+    }));
+    final r = await api.requestOtp('+923001112233');
+    expect(r['devCode'], '123456');
+    final s = await api.verifyOtp('+923001112233', '123456', fullName: 'Bilal', requiredRole: 'PASSENGER');
+    expect(s.accessToken, 'a1');
+    expect(seen.last, contains('"fullName":"Bilal"'));
+    await expectLater(api.verifyOtp('+923001112233', '123456', requiredRole: 'DRIVER'), throwsA(isA<ApiException>().having((e) => e.code, 'code', 'WRONG_APP')));
+  });
+
   test('formatting helpers', () {
     expect(money(2865), 'Rs 2,865');
     expect(money(null), '–');

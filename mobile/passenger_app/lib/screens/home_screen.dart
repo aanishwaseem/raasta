@@ -29,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _error;
   bool _busy = false;
   String? _requestKey;
+  final _promo = TextEditingController();
 
   @override
   void initState() {
@@ -70,7 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_dropoff == null || _pickup == null) return;
     setState(() { _busy = true; _error = null; _quote = null; _requestKey = null; });
     try {
-      final q = await widget.api.post('/rides/quotes', body: {'pickup': _pickup!.toRequest(), 'dropoff': _dropoff!.toRequest()}) as Map<String, dynamic>;
+      final q = await widget.api.post('/rides/quotes', body: {'pickup': _pickup!.toRequest(), 'dropoff': _dropoff!.toRequest(), if (_promo.text.trim().isNotEmpty) 'promoCode': _promo.text.trim().toUpperCase()}) as Map<String, dynamic>;
       final opts = (q['options'] as List).cast<Map<String, dynamic>>();
       setState(() { _quote = q; _product = opts.isEmpty ? null : opts.first['productCode'] as String; });
     } on ApiException catch (e) {
@@ -85,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // Same key for retries of this tap, so a flaky connection can't create two rides.
     _requestKey ??= ApiClient.newIdempotencyKey();
     try {
-      final ride = await widget.api.post('/rides', body: {'quoteId': _quote!['id'], 'productCode': _product, 'paymentMethod': _payment}, idempotencyKey: _requestKey) as Map<String, dynamic>;
+      final ride = await widget.api.post('/rides', body: {'quoteId': _quote!['id'], 'productCode': _product, 'paymentMethod': _payment, if (_quote!['promo'] != null) 'promoCode': _promo.text.trim().toUpperCase()}, idempotencyKey: _requestKey) as Map<String, dynamic>;
       _requestKey = null;
       if (mounted) _openTrip(ride['id'] as String);
     } on ApiException catch (e) {
@@ -93,6 +94,12 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  @override
+  void dispose() {
+    _promo.dispose();
+    super.dispose();
   }
 
   @override
@@ -118,11 +125,16 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 8),
         PlaceField(api: widget.api, label: 'Where to?', icon: Icons.flag_outlined, onPicked: (p) => setState(() { _dropoff = p; _quote = null; })),
         const SizedBox(height: 16),
+        const SizedBox(height: 8),
+        TextField(controller: _promo, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(labelText: 'Promo code (optional)', prefixIcon: Icon(Icons.local_offer_outlined))),
+        const SizedBox(height: 12),
         FilledButton(onPressed: _busy || _dropoff == null ? null : _getQuote, child: const Text('See fares')),
         if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
         if (_quote != null) ...[
           const SizedBox(height: 16),
           Text('${km(_quote!['distanceM'])} · ${minutes(_quote!['durationS'])}', style: Theme.of(context).textTheme.labelLarge),
+          if (_quote!['promoError'] != null) Text('Promo code: ${_quote!['promoError']}', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          if (_quote!['promo'] != null) Text('Promo ${_promo.text.trim().toUpperCase()} applied', style: TextStyle(color: Colors.green.shade700)),
           for (final o in opts) _OptionCard(o: o, selected: o['productCode'] == _product, onTap: () => setState(() => _product = o['productCode'] as String)),
           const SizedBox(height: 8),
           SegmentedButton<String>(

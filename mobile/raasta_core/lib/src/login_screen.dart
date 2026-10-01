@@ -18,10 +18,40 @@ class _LoginScreenState extends State<LoginScreen> {
   final _pw = TextEditingController();
   final _name = TextEditingController();
   bool _signup = false;
+  bool _phone = false;
+  bool _codeSent = false;
+  final _code = TextEditingController();
+  String? _hint;
   String? _error;
   bool _busy = false;
 
+  Future<void> _sendCode() async {
+    setState(() { _busy = true; _error = null; });
+    try {
+      final r = await widget.api.requestOtp(_id.text.trim());
+      if (!mounted) return;
+      setState(() { _codeSent = true; _hint = r['devCode'] != null ? 'Development code: ${r['devCode']}' : 'We sent a 6-digit code by SMS.'; if (r['devCode'] != null) _code.text = '${r['devCode']}'; });
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.friendly);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _verifyCode() async {
+    setState(() { _busy = true; _error = null; });
+    try {
+      await widget.api.verifyOtp(_id.text.trim(), _code.text.trim(), fullName: _name.text.trim(), requiredRole: widget.role);
+      widget.onLoggedIn();
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.code == 'NAME_REQUIRED' || e.message.toLowerCase().contains('name') ? 'Enter your name to create your account.' : e.friendly);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _submit() async {
+    if (_phone) return _codeSent ? _verifyCode() : _sendCode();
     setState(() { _busy = true; _error = null; });
     try {
       if (_signup) {
@@ -43,6 +73,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _id.dispose();
     _pw.dispose();
     _name.dispose();
+    _code.dispose();
     super.dispose();
   }
 
@@ -59,14 +90,19 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text('Raasta', style: Theme.of(context).textTheme.displaySmall?.copyWith(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w700)),
                 Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 32),
-                if (_signup) ...[TextField(controller: _name, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Full name')), const SizedBox(height: 12)],
-                TextField(controller: _id, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.username], decoration: InputDecoration(labelText: _signup ? 'Email or phone (+92...)' : 'Email or phone')),
+                if (_signup || (_phone && _codeSent)) ...[TextField(controller: _name, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Full name')), const SizedBox(height: 12)],
+                TextField(controller: _id, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.username], decoration: InputDecoration(labelText: _phone ? 'Phone (+92...)' : _signup ? 'Email or phone (+92...)' : 'Email or phone')),
                 const SizedBox(height: 12),
-                TextField(controller: _pw, obscureText: true, autofillHints: const [AutofillHints.password], onSubmitted: (_) => _submit(), decoration: InputDecoration(labelText: _signup ? 'Password (8+ characters, letters and numbers)' : 'Password')),
+                if (_phone && _codeSent) ...[
+                  TextField(controller: _code, onChanged: (_) => setState(() {}), keyboardType: TextInputType.number, maxLength: 6, decoration: const InputDecoration(labelText: '6-digit code', counterText: '')),
+                  if (_hint != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(_hint!, style: Theme.of(context).textTheme.bodySmall)),
+                ] else if (!_phone)
+                  TextField(controller: _pw, obscureText: true, autofillHints: const [AutofillHints.password], onSubmitted: (_) => _submit(), decoration: InputDecoration(labelText: _signup ? 'Password (8+ characters, letters and numbers)' : 'Password')),
                 if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
                 const SizedBox(height: 20),
-                FilledButton(onPressed: _busy ? null : _submit, child: _busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_signup ? 'Create account' : 'Sign in')),
-                TextButton(onPressed: _busy ? null : () => setState(() { _signup = !_signup; _error = null; }), child: Text(_signup ? 'I already have an account' : 'Create an account')),
+                FilledButton(onPressed: _busy || (_phone && _codeSent && _code.text.trim().length != 6) ? null : _submit, child: _busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_phone ? (_codeSent ? 'Verify and continue' : 'Send code') : _signup ? 'Create account' : 'Sign in')),
+                if (!_phone) TextButton(onPressed: _busy ? null : () => setState(() { _signup = !_signup; _error = null; }), child: Text(_signup ? 'I already have an account' : 'Create an account')),
+                TextButton(onPressed: _busy ? null : () => setState(() { _phone = !_phone; _signup = false; _codeSent = false; _error = null; }), child: Text(_phone ? 'Use email and password instead' : 'Use a phone code instead')),
               ]),
             ),
           ),

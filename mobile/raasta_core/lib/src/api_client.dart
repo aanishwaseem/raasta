@@ -63,6 +63,25 @@ class ApiClient {
     return s;
   }
 
+  /// Sends a login code by SMS. In development the API can echo the code as `devCode`.
+  Future<Map<String, dynamic>> requestOtp(String phone) async => Map<String, dynamic>.from(await _send('POST', '/auth/otp/request', body: {'phone': phone}, auth: false) as Map);
+
+  Future<Session> verifyOtp(String phone, String code, {String? fullName, required String requiredRole}) async {
+    final res = await _send('POST', '/auth/otp/verify', body: {
+      'phone': phone,
+      'code': code,
+      if (fullName != null && fullName.isNotEmpty) 'fullName': fullName,
+      'role': requiredRole,
+      'device': {'deviceId': await store.deviceId(), 'platform': 'android'},
+    }, auth: false);
+    final roles = List<String>.from(res['user']['roles'] as List);
+    if (!roles.contains(requiredRole)) throw ApiException(403, 'WRONG_APP', 'This account is not registered as a ${requiredRole.toLowerCase()}.');
+    final t = res['tokens'] as Map<String, dynamic>;
+    final s = Session(accessToken: t['accessToken'], refreshToken: t['refreshToken'], name: (res['user']['fullName'] ?? phone) as String, roles: roles);
+    await store.write(_session = s);
+    return s;
+  }
+
   Future<Session> register({required String fullName, String? email, String? phone, required String password, required String role}) async {
     final res = await _send('POST', '/auth/register', body: {
       'fullName': fullName,
