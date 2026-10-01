@@ -7,6 +7,8 @@ const apiUrl = String.fromEnvironment('API_URL', defaultValue: 'http://10.0.2.2:
 
 void main() => runApp(DriverApp(api: ApiClient(baseUrl: apiUrl, useRealtime: true)));
 
+/// The driver app is dark and high-contrast with large controls, so it is clearly a different
+/// product from the light rider app and easy to read at night.
 class DriverApp extends StatefulWidget {
   DriverApp({super.key, required this.api, DeviceLocation? location}) : location = location ?? DeviceLocation();
   final ApiClient api;
@@ -28,10 +30,12 @@ class _DriverAppState extends State<DriverApp> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = raastaTheme(brightness: Brightness.dark, minButtonHeight: 60);
     return MaterialApp(
       title: 'Raasta Driver',
-      theme: raastaTheme(minButtonHeight: 56),
-      darkTheme: raastaTheme(brightness: Brightness.dark, minButtonHeight: 56),
+      theme: theme,
+      darkTheme: theme,
+      themeMode: ThemeMode.dark,
       debugShowCheckedModeBanner: false,
       home: !_ready
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))

@@ -100,37 +100,60 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  void _fillDemo(String email) => setState(() { _id.text = email; _pw.text = 'Passw0rd!test'; _signup = false; _phone = false; _error = null; });
+
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final driver = widget.role == 'DRIVER';
+    final demo = const bool.fromEnvironment('DEMO_LOGIN') ? (driver ? ['usman@raasta.test'] : ['bilal@raasta.test']) : const <String>[];
+    final heroColors = driver ? const [Color(0xFF0B1F24), Color(0xFF134E4A)] : const [Color(0xFF0F766E), Color(0xFF14B8A6)];
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+      backgroundColor: t.scaffoldBackgroundColor,
+      body: SingleChildScrollView(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Container(
+            padding: EdgeInsets.fromLTRB(28, MediaQuery.of(context).padding.top + 40, 28, 36),
+            decoration: BoxDecoration(gradient: LinearGradient(colors: heroColors, begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32))),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(14)), child: Icon(driver ? Icons.local_taxi_rounded : Icons.route_rounded, color: Colors.white, size: 30)),
+              const SizedBox(height: 20),
+              Text(driver ? 'Raasta Driver' : 'Raasta', style: t.textTheme.displaySmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: -1)),
+              const SizedBox(height: 6),
+              Text(driver ? 'Earn smarter. Know where demand is before you drive.' : 'Predictable, safe and fairly priced rides across Pakistan.', style: t.textTheme.bodyLarge?.copyWith(color: Colors.white.withValues(alpha: 0.9))),
+            ]),
+          ),
+          Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
-              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Text('Raasta', style: Theme.of(context).textTheme.displaySmall?.copyWith(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w700)),
-                Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 32),
-                if (_signup || (_phone && _codeSent)) ...[TextField(controller: _name, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Full name')), const SizedBox(height: 12)],
-                TextField(controller: _id, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.username], decoration: InputDecoration(labelText: _phone ? 'Phone (+92...)' : _signup ? 'Email or phone (+92...)' : 'Email or phone')),
-                const SizedBox(height: 12),
-                if (_phone && _codeSent) ...[
-                  TextField(controller: _code, onChanged: (_) => setState(() {}), keyboardType: TextInputType.number, maxLength: 6, decoration: const InputDecoration(labelText: '6-digit code', counterText: '')),
-                  if (_hint != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(_hint!, style: Theme.of(context).textTheme.bodySmall)),
-                ] else if (!_phone)
-                  TextField(controller: _pw, obscureText: true, autofillHints: const [AutofillHints.password], onSubmitted: (_) => _submit(), decoration: InputDecoration(labelText: _signup ? 'Password (8+ characters, letters and numbers)' : 'Password')),
-                if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
-                const SizedBox(height: 20),
-                FilledButton(onPressed: _busy || (_phone && _codeSent && _code.text.trim().length != 6) ? null : _submit, child: _busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_phone ? (_codeSent ? 'Verify and continue' : 'Send code') : _signup ? 'Create account' : 'Sign in')),
-                if (!_phone) TextButton(onPressed: _busy ? null : () => setState(() { _signup = !_signup; _error = null; }), child: Text(_signup ? 'I already have an account' : 'Create an account')),
-                TextButton(onPressed: _busy ? null : _editServer, child: Text('Server: ${Uri.tryParse(widget.api.baseUrl)?.authority ?? widget.api.baseUrl}')),
-                TextButton(onPressed: _busy ? null : () => setState(() { _phone = !_phone; _signup = false; _codeSent = false; _error = null; }), child: Text(_phone ? 'Use email and password instead' : 'Use a phone code instead')),
-              ]),
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Text(_phone ? (_codeSent ? 'Enter your code' : 'Sign in with your phone') : _signup ? widget.title : 'Welcome back', style: t.textTheme.headlineSmall),
+                  const SizedBox(height: 16),
+                  if (_signup || (_phone && _codeSent)) ...[TextField(controller: _name, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Full name', prefixIcon: Icon(Icons.person_outline))), const SizedBox(height: 12)],
+                  TextField(controller: _id, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.username], decoration: InputDecoration(prefixIcon: Icon(_phone ? Icons.phone_outlined : Icons.alternate_email), labelText: _phone ? 'Phone (+92...)' : _signup ? 'Email or phone (+92...)' : 'Email or phone')),
+                  const SizedBox(height: 12),
+                  if (_phone && _codeSent) ...[
+                    TextField(controller: _code, onChanged: (_) => setState(() {}), keyboardType: TextInputType.number, maxLength: 6, decoration: const InputDecoration(labelText: '6-digit code', prefixIcon: Icon(Icons.sms_outlined), counterText: '')),
+                    if (_hint != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(_hint!, style: t.textTheme.bodySmall)),
+                  ] else if (!_phone)
+                    TextField(controller: _pw, obscureText: true, autofillHints: const [AutofillHints.password], onSubmitted: (_) => _submit(), decoration: InputDecoration(prefixIcon: const Icon(Icons.lock_outline), labelText: _signup ? 'Password (8+ characters, letters and numbers)' : 'Password')),
+                  if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Row(children: [Icon(Icons.error_outline, size: 18, color: t.colorScheme.error), const SizedBox(width: 8), Expanded(child: Text(_error!, style: TextStyle(color: t.colorScheme.error)))])),
+                  const SizedBox(height: 20),
+                  FilledButton(onPressed: _busy || (_phone && _codeSent && _code.text.trim().length != 6) ? null : _submit, child: _busy ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5)) : Text(_phone ? (_codeSent ? 'Verify and continue' : 'Send code') : _signup ? 'Create account' : 'Sign in')),
+                  if (demo.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(onPressed: _busy ? null : () => _fillDemo(demo.first), icon: const Icon(Icons.bolt), label: Text(driver ? 'Fill demo driver login' : 'Fill demo rider login')),
+                  ],
+                  if (!_phone) TextButton(onPressed: _busy ? null : () => setState(() { _signup = !_signup; _error = null; }), child: Text(_signup ? 'I already have an account' : 'Create an account')),
+                  TextButton(onPressed: _busy ? null : () => setState(() { _phone = !_phone; _signup = false; _codeSent = false; _error = null; }), child: Text(_phone ? 'Use email and password instead' : 'Use a phone code instead')),
+                  TextButton.icon(onPressed: _busy ? null : _editServer, icon: const Icon(Icons.dns_outlined, size: 18), label: Text('Server: ${Uri.tryParse(widget.api.baseUrl)?.authority ?? widget.api.baseUrl}')),
+                ]),
+              ),
             ),
           ),
-        ),
+        ]),
       ),
     );
   }
