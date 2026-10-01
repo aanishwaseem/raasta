@@ -7,13 +7,28 @@ import { config } from '../config/config';
 
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../migrations');
 
+/** Waits for Postgres to accept connections: on a fresh container it restarts once after first-time setup. */
+async function connectWithRetry(databaseUrl: string, attempts = 30, delayMs = 2000): Promise<Client> {
+  for (let i = 1; ; i++) {
+    const client = new Client({ connectionString: databaseUrl });
+    try {
+      await client.connect();
+      return client;
+    } catch (err) {
+      await client.end().catch(() => undefined);
+      if (i >= attempts) throw err;
+      if (!process.env.JEST_WORKER_ID) console.log(`database not ready (${(err as Error).message}), retrying (${i}/${attempts})`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+}
+
 /**
  * Forward-only SQL migrator. Each file runs in its own transaction and is recorded with a checksum;
  * editing an already-applied file is an error (write a new migration instead).
  */
 export async function migrate(databaseUrl = config().DATABASE_URL, opts: { reset?: boolean; quiet?: boolean } = {}): Promise<string[]> {
-  const client = new Client({ connectionString: databaseUrl });
-  await client.connect();
+  const client = await connectWithRetry(databaseUrl);
   const applied: string[] = [];
   try {
     if (opts.reset) {
