@@ -120,7 +120,11 @@ describe('ride flow (real Postgres + Redis + sockets)', () => {
     const pSock = await t.socket(passenger);
     const q = await t.quote(passenger);
     const r = await t.requestRide(passenger, q);
-    const first = await Promise.race([t.waitOffer(usman).then((o) => ({ o, who: usman })), t.waitOffer(hamza).then((o) => ({ o, who: hamza }))]);
+    // only one driver is offered at a time, so the other poller always times out; swallow it
+    // or its late rejection lands as an unhandled error in whichever suite runs next
+    const polls = [usman, hamza].map((who) => t.waitOffer(who).then((o) => ({ o, who })));
+    polls.forEach((p) => p.catch(() => undefined));
+    const first = await Promise.any(polls);
     await t.call(first.who, 'post', `/driver/offers/${first.o.offerId}/accept`);
     const matchingAgain = TestApp.waitFor(pSock, 'ride.matching', (p: { stage?: string }) => p.stage === 'driver_cancelled');
     const cancel = await t.call(first.who, 'post', `/driver/rides/${r.body.id}/cancel`, { reason: 'VEHICLE_ISSUE' });
