@@ -120,10 +120,9 @@ jobs:
             sleep 3
           done
           curl -sf localhost:3000/health/ready
-          curl -sf -o /dev/null localhost:5173 || curl -sf -o /dev/null localhost:8080 || true
-      - name: Seed test data and sign in through the running stack
+          for url in localhost:5173 localhost:8080 localhost:8081; do curl -sf -o /dev/null "$url"; done
+      - name: Sign in as the seeded rider through the running stack
         run: |
-          docker compose exec -T api npm run db:seed
           curl -sf -X POST localhost:3000/api/v1/auth/login -H 'content-type: application/json' \
             -d '{"identifier":"bilal@raasta.test","password":"Passw0rd!test","device":{"deviceId":"ci-device-0001","platform":"android"}}' \
             | grep -q accessToken
