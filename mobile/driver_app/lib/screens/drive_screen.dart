@@ -1,162 +1,130 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:raasta_core/raasta_core.dart';
 
-import 'earnings_screen.dart';
+import '../logic/drive_controller.dart';
+import '../util.dart';
+import '../widgets/banners.dart';
+import '../widgets/copilot_chip.dart';
+import '../widgets/driver_map.dart';
+import '../widgets/offer_card.dart';
+import '../widgets/online_toggle.dart';
+import '../widgets/sos_button.dart';
+import '../widgets/stats_strip.dart';
 import 'trip_screen.dart';
 
-/// Offline / online home. While online it pings location every 5s and polls for the current offer every 3s.
+/// Home of the app: full-bleed map, online switch, today's numbers, incoming offers and the copilot hint.
 class DriveScreen extends StatefulWidget {
-  const DriveScreen({super.key, required this.api, required this.location, required this.onSignOut});
+  const DriveScreen({super.key, required this.api, required this.location});
   final ApiClient api;
   final DeviceLocation location;
-  final VoidCallback onSignOut;
 
   @override
   State<DriveScreen> createState() => _DriveScreenState();
 }
 
 class _DriveScreenState extends State<DriveScreen> {
-  bool _online = false;
-  bool _busy = false;
-  String? _error;
-  Map<String, dynamic>? _offer;
-  Fix? _pos;
-  Timer? _offerTimer;
-  LocationReporter? _reporter;
-  RealtimeClient? _rt;
-  StreamSubscription<String>? _rtSub;
+  late final DriveController _c = DriveController(widget.api, widget.location)..onTrip = _openTrip..addListener(_onChange);
+  bool _tripOpen = false;
 
   @override
   void initState() {
     super.initState();
-    _resume();
+    _c.init();
   }
 
   @override
   void dispose() {
-    _offerTimer?.cancel();
-    _reporter?.stop();
-    _rtSub?.cancel();
-    _rt?.dispose();
+    _c.dispose();
     super.dispose();
   }
 
-  Future<void> _resume() async {
-    try {
-      final r = await widget.api.get('/driver/rides/active');
-      final ride = r is List ? (r.isEmpty ? null : r.first) : r;
-      if (ride is Map && ride['id'] != null && mounted) _openTrip(ride['id'] as String);
-    } on ApiException {/* ignore */}
-  }
-
-  void _openTrip(String id) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => DriverTripScreen(api: widget.api, location: widget.location, rideId: id))).then((_) {
-      if (mounted) setState(() => _offer = null);
-    });
-  }
-
-  Future<void> _toggle() async {
-    setState(() { _busy = true; _error = null; });
-    try {
-      if (_online) {
-        await widget.api.post('/driver/offline');
-        _offerTimer?.cancel();
-        _reporter?.stop();
-        _rtSub?.cancel();
-        _rt?.dispose();
-        _rt = null;
-        setState(() { _online = false; _offer = null; });
-      } else {
-        final p = await widget.location.current();
-        if (p.approximate) {
-          setState(() => _error = '${widget.location.lastProblem ?? 'Your location is unavailable.'} Turn on location to go online.');
-          return;
-        }
-        await widget.api.post('/driver/online', body: {'lat': p.lat, 'lng': p.lng});
-        _pos = p;
-        setState(() => _online = true);
-        _rt = widget.api.realtime();
-        _rtSub = _rt?.events.listen((_) => _pollOffer());
-        // pushes deliver offers instantly; polling is the fallback
-        _offerTimer = Timer.periodic(Duration(seconds: _rt == null ? 3 : 10), (_) => _pollOffer());
-        _reporter = LocationReporter(widget.api, widget.location, onFix: (f) { if (mounted) setState(() => _pos = f); })..start();
-      }
-    } on ApiException catch (e) {
-      setState(() => _error = e.friendly);
-    } finally {
-      if (mounted) setState(() => _busy = false);
+  void _onChange() {
+    final n = _c.notice;
+    if (n != null && mounted) {
+      _c.clearNotice();
+      toast(context, n);
     }
   }
 
-  Future<void> _pollOffer() async {
-    try {
-      final o = await widget.api.get('/driver/offers/current');
-      if (mounted) setState(() => _offer = o is Map<String, dynamic> ? o : null);
-    } on ApiException {/* keep last state */}
-  }
-
-  Future<void> _respond(bool accept) async {
-    final id = _offer!['offerId'] as String;
-    final rideId = _offer!['rideId'] as String;
-    try {
-      await widget.api.post('/driver/offers/$id/${accept ? 'accept' : 'decline'}');
-      setState(() => _offer = null);
-      if (accept && mounted) _openTrip(rideId);
-    } on ApiException catch (e) {
-      setState(() { _error = e.friendly; _offer = null; });
-    }
+  Future<void> _openTrip(String rideId) async {
+    if (_tripOpen || !mounted) return;
+    _tripOpen = true;
+    final result = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => DriverTripScreen(api: widget.api, location: widget.location, rideId: rideId)));
+    _tripOpen = false;
+    if (!mounted) return;
+    if (result == 'cancelled') toast(context, 'Trip cancelled.');
+    _c.offer = null;
+    _c.loadCopilot();
+    _c.pollOffer();
   }
 
   @override
   Widget build(BuildContext context) {
-    final o = _offer;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Drive'), actions: [
-        IconButton(tooltip: 'Earnings', icon: const Icon(Icons.payments_outlined), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EarningsScreen(api: widget.api)))),
-        IconButton(tooltip: 'Sign out', icon: const Icon(Icons.logout), onPressed: _online ? null : widget.onSignOut),
-      ]),
-      bottomNavigationBar: SafeArea(child: Padding(padding: const EdgeInsets.all(16), child: FilledButton(onPressed: _busy ? null : _toggle, child: Text(_online ? 'Go offline' : 'Go online')))),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text(_online ? 'You are online' : 'You are offline', style: Theme.of(context).textTheme.headlineMedium),
-          Text(_online ? 'Waiting for ride requests…' : 'Go online to receive ride requests.'),
-          if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
-          const SizedBox(height: 12),
-          if (_pos != null) MapView(height: 180, pins: [MapPin(_pos!.lat, _pos!.lng, icon: Icons.directions_car, color: Colors.black87, label: 'You'), if (o != null) MapPin((o['pickup']['lat'] as num).toDouble(), (o['pickup']['lng'] as num).toDouble(), icon: Icons.trip_origin, label: 'Pickup')]),
-          const SizedBox(height: 12),
-          if (o != null) _OfferCard(offer: o, onAccept: () => _respond(true), onDecline: () => _respond(false)),
-        ],
-      ),
-    );
+    return ListenableBuilder(listenable: _c, builder: (context, _) {
+      final pos = _c.pos;
+      final center = pos == null ? const LatLng(31.5204, 74.3587) : LatLng(pos.lat, pos.lng);
+      final o = _c.offer;
+      final recs = _c.recommendations;
+      return Stack(children: [
+        Positioned.fill(child: DriverMap(attribution: false, center: center, fitKey: o == null ? null : '${o['offerId']}', pins: [if (o != null && o['pickup'] is Map) MapPin(dbl(o['pickup']['lat']), dbl(o['pickup']['lng']), icon: Icons.trip_origin, color: goGreen, label: 'Pickup')])),
+        Positioned(
+          top: 0, left: 0, right: 0,
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: _StatusCard(online: _c.online, hasOffer: o != null)),
+                  const SizedBox(width: 12),
+                  SosButton(api: widget.api, location: widget.location, position: pos),
+                ]),
+                if (_c.networkDown) Padding(padding: const EdgeInsets.only(top: 8), child: NetworkBanner(onRetry: () { _c.loadCopilot(); _c.pollOffer(); })),
+                if (_c.gpsProblem != null) Padding(padding: const EdgeInsets.only(top: 8), child: GpsBanner(problem: _c.gpsProblem!, onRetry: _c.refreshLocation)),
+                const SizedBox(height: 8),
+                StatsStrip(today: _c.today),
+              ]),
+            ),
+          ),
+        ),
+        Positioned(
+          left: 0, right: 0, bottom: 0,
+          child: o != null
+              ? OfferCard(offer: o, busy: _c.responding, onAccept: () => _c.respond(true), onDecline: () => _c.respond(false), onExpire: _c.expireOffer)
+              : MapSheet(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  if (_c.error != null) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(_c.error!, style: TextStyle(color: Theme.of(context).colorScheme.error, fontWeight: FontWeight.w600))),
+                  if (_c.online) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text('Looking for ride requests near you…', style: Theme.of(context).textTheme.bodyLarge, textAlign: TextAlign.center)),
+                  if (recs.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 12), child: CopilotChip(recommendation: recs.first, disclaimer: _c.copilot['disclaimer'] as String?)),
+                  OnlineToggle(online: _c.online, busy: _c.busy, onToggle: _c.toggle),
+                ])),
+        ),
+      ]);
+    });
   }
 }
 
-class _OfferCard extends StatelessWidget {
-  const _OfferCard({required this.offer, required this.onAccept, required this.onDecline});
-  final Map<String, dynamic> offer;
-  final VoidCallback onAccept;
-  final VoidCallback onDecline;
-
+class _StatusCard extends StatelessWidget {
+  const _StatusCard({required this.online, required this.hasOffer});
+  final bool online;
+  final bool hasOffer;
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(money(offer['fare']), style: Theme.of(context).textTheme.displaySmall),
-          Text('${km(offer['pickupDistanceM'])} to pickup · ${km(offer['tripDistanceM'])} trip · ${offer['paymentMethod']}'),
-          const SizedBox(height: 8),
-          Text('From: ${offer['pickupAddress']}'),
-          Text('To: ${offer['dropoffAddress']}'),
-          const SizedBox(height: 12),
-          FilledButton(onPressed: onAccept, child: const Text('Accept')),
-          const SizedBox(height: 8),
-          OutlinedButton(onPressed: onDecline, child: const Text('Decline')),
-        ]),
-      ),
+    final color = online ? goGreen : const Color(0xFF94A3B8);
+    final t = Theme.of(context);
+    return Container(
+      constraints: const BoxConstraints(minHeight: 60),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(color: t.colorScheme.surface.withValues(alpha: 0.94), borderRadius: BorderRadius.circular(18), border: Border.all(color: color.withValues(alpha: 0.6))),
+      child: Row(children: [
+        Icon(Icons.circle, size: 14, color: color),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+          Text(online ? 'You are online' : 'You are offline', style: t.textTheme.titleMedium),
+          Text(hasOffer ? 'New ride request' : online ? 'Receiving requests' : 'Go online to get requests', style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+        ])),
+        StatusPill(online ? 'ONLINE' : 'OFFLINE', color: color),
+      ]),
     );
   }
 }

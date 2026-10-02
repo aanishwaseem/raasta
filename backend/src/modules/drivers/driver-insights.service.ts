@@ -25,6 +25,10 @@ export interface EarningsSummary {
   perHour: number | null;
   perKm: number | null;
   daily: Array<{ date: string; trips: number; net: number; onlineHours: number }>;
+  /** Rolling 90-day rates (0..1), null until there is enough data. */
+  acceptanceRate: number | null;
+  completionRate: number | null;
+  cancellationRate: number | null;
   notes: string[];
 }
 
@@ -97,6 +101,8 @@ export class DriverInsightsService {
       d.onlineS += o.s;
       days.set(o.day, d);
     }
+    const st = await this.stats.get(driverId);
+    const rate = (n: number, d: number) => (d >= 5 ? Math.round((n / d) * 1000) / 1000 : null);
     const notes = ['Fuel cost is an estimate from trip distance and the city fuel-cost setting; it excludes the drive to pickup.'];
     if (onlineS === 0 && trips.length) notes.push('No online-session data for this range, so hourly figures are unavailable.');
     return {
@@ -116,6 +122,9 @@ export class DriverInsightsService {
       perHour: onlineS > 0 ? Math.round(net / (onlineS / 3600)) : null,
       perKm: km > 0 ? Math.round(net / km) : null,
       daily: [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, d]) => ({ date, trips: d.trips, net: d.net, onlineHours: round1(d.onlineS / 3600) })),
+      acceptanceRate: st ? rate(st.offersAccepted, st.offersReceived) : null,
+      completionRate: st ? rate(st.tripsCompleted, st.tripsAssigned) : null,
+      cancellationRate: st ? rate(st.driverCancellations, st.tripsAssigned) : null,
       notes,
     };
   }

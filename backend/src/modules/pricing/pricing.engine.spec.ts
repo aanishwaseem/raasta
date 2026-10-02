@@ -51,6 +51,15 @@ describe('pricing engine', () => {
     expect(tiny.recommended).toBeGreaterThanOrEqual(economy.minimumFare);
   });
 
+  it('breakdown lines add up to the estimate, including the minimum-fare top-up', () => {
+    const tiny = adviseFare(economy, 600, 120, calm);
+    const b = tiny.breakdown;
+    expect(b.minimumFareAdjustment).toBeGreaterThan(0);
+    expect(b.base + b.distance + b.time + b.minimumFareAdjustment + b.bookingFee).toBe(Math.max(economy.minimumFare, b.base + b.distance + b.time) + b.bookingFee);
+    const long = adviseFare(economy, 20000, 2400, calm);
+    expect(long.breakdown.minimumFareAdjustment).toBe(0);
+  });
+
   it('discounts shared rides and says so', () => {
     const solo = adviseFare(economy, 6000, 1200, calm);
     const shared = adviseFare(economy, 6000, 1200, calm, { shared: true });

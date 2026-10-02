@@ -37,6 +37,8 @@ dependencies:
   raasta_core:
     path: ../raasta_core
   file_picker: ^10.3.3
+  flutter_map: ^8.2.2
+  latlong2: ^0.9.1
 
 dev_dependencies:
   flutter_test:
