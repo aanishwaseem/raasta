@@ -98,7 +98,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _loaded = true;
       _loadError = errors.length >= 3 ? (errors.any(isOffline) ? 'You appear to be offline. Some things may be out of date.' : 'Some of your info could not be loaded.') : null;
     });
-    if (_active != null && !_autoOpened) {
+    // Booking replaces itself with the trip screen, which completes Home's push future early; only resume
+    // an active ride when Home is actually the screen in front, or the trip screen would open twice.
+    if (_active != null && !_autoOpened && (ModalRoute.of(context)?.isCurrent ?? true)) {
       _autoOpened = true;
       _openTrip(_active!['id'] as String);
     }

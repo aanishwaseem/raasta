@@ -32,9 +32,11 @@ Future<void> _tap(WidgetTester tester, Finder f) async {
 void main() {
   testWidgets('book: search, compare AI-tagged fares, request with an idempotency key, then see driver, plate and PIN', (tester) async {
     var status = 'MATCHING';
+    var created = false;
     final server = await openApp(tester, {
       'POST /rides/quotes': (_) => j(quote),
-      'POST /rides': (_) => j(rideView('MATCHING')),
+      'POST /rides': (_) { created = true; return j(rideView('MATCHING')); },
+      'GET /rides/active': (_) => created ? j(rideView(status)) : j(<String, dynamic>{}),
       'GET /rides/:id': (_) => j(rideView(status, pin: status == 'DRIVER_ASSIGNED' ? '4821' : null)),
     });
     await tester.tap(find.text('Where to?'));
@@ -61,6 +63,8 @@ void main() {
     expect(body['paymentMethod'], 'CASH');
     expect(server.headers['POST /rides']!['idempotency-key'], isNotEmpty);
     expect(find.text('Finding your driver'), findsWidgets);
+    // Home reloads when Booking is replaced by the trip; it must not stack a second trip screen on top.
+    expect(find.byType(TripScreen), findsOneWidget);
 
     status = 'DRIVER_ASSIGNED';
     await settle(tester, 3500);
@@ -130,6 +134,23 @@ void main() {
     await settle(tester, 500);
     expect((server.bodies['POST /safety/events/e1/respond'] as Map)['response'], 'SAFE');
     expect(find.text('Are you safe?'), findsNothing);
+  });
+
+  testWidgets('trip ended away from the destination only offers actions that still work (no share or contact driver)', (tester) async {
+    final alerts = StreamController<Map<String, dynamic>>.broadcast();
+    addTearDown(alerts.close);
+    final server = FakeServer({'GET /rides/:id': (_) => j(rideView('COMPLETED'))});
+    await _openTrip(tester, server, alerts: alerts.stream);
+    alerts.add({
+      'eventId': 'e2', 'rideId': 'r1', 'type': 'END_FAR_FROM_DESTINATION', 'severity': 'LOW', 'message': 'Your trip ended away from the destination you set.',
+      'actions': [{'code': 'SAFE', 'label': "I'm Safe"}, {'code': 'SOS', 'label': 'SOS'}],
+    });
+    await settle(tester, 500);
+    expect(find.text('Are you safe?'), findsOneWidget);
+    expect(find.text("I'm safe"), findsOneWidget);
+    expect(find.text('SOS'), findsWidgets);
+    expect(find.text('Share ride'), findsNothing);
+    expect(find.text('Contact driver'), findsNothing);
   });
 
   testWidgets('completed trip: receipt summary, then rating with stars, tags and comment', (tester) async {

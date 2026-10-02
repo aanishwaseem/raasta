@@ -74,7 +74,7 @@ class _Body extends StatelessWidget {
       Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Take-home after fuel estimate', style: t.textTheme.labelLarge?.copyWith(color: t.colorScheme.onSurfaceVariant)),
         Text(money(dbl(e['netAfterFuelEstimate'], dbl(e['net']))), style: t.textTheme.displayMedium?.copyWith(fontWeight: FontWeight.w900, color: goGreen)),
-        Text('${e['trips'] ?? 0} trips · ${dbl(e['distanceKm']).toStringAsFixed(1)} km driven', style: t.textTheme.bodyMedium),
+        Text('${e['trips'] ?? 0} ${(e['trips'] ?? 0) == 1 ? 'trip' : 'trips'} · ${dbl(e['distanceKm']).toStringAsFixed(1)} km driven', style: t.textTheme.bodyMedium),
       ]))),
       const SectionTitle('Breakdown'),
       grid([

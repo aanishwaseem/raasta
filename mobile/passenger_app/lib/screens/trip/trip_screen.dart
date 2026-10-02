@@ -128,8 +128,13 @@ class _TripScreenState extends State<TripScreen> {
     }
   }
 
+  bool _ratingOpen = false;
+
   Future<void> _rate() async {
+    if (_ratingOpen) return;
+    _ratingOpen = true;
     final done = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => RatingScreen(api: widget.api, rideId: widget.rideId, driver: _ride?['driver'] is Map ? asJson(_ride!['driver']) : null)));
+    _ratingOpen = false;
     if (done == true) _poll();
   }
 

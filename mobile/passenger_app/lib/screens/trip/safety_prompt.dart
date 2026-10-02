@@ -71,6 +71,8 @@ class _SafetyPromptState extends State<_SafetyPrompt> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    final offered = widget.alert['actions'] is List ? (widget.alert['actions'] as List).map((a) => a is Map ? a['code'] : null).toSet() : null;
+    bool offers(String code) => offered == null || offered.contains(code);
     final severe = widget.alert['severity'] == 'HIGH' || widget.alert['severity'] == 'CRITICAL';
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
@@ -86,12 +88,14 @@ class _SafetyPromptState extends State<_SafetyPrompt> {
       const SizedBox(height: 16),
       FilledButton.icon(onPressed: _busy ? null : _safe, icon: const Icon(Icons.check_circle_outline), label: const Text("I'm safe")),
       const SizedBox(height: 8),
-      Row(children: [
-        Expanded(child: OutlinedButton(onPressed: _busy ? null : _contactDriver, child: const Text('Contact driver'))),
-        const SizedBox(width: 8),
-        Expanded(child: OutlinedButton(onPressed: _busy ? null : _share, child: const Text('Share ride'))),
-      ]),
-      const SizedBox(height: 8),
+      if (offers('CONTACT_DRIVER') || offers('SHARE')) ...[
+        Row(children: [
+          if (offers('CONTACT_DRIVER')) Expanded(child: OutlinedButton(onPressed: _busy ? null : _contactDriver, child: const Text('Contact driver'))),
+          if (offers('CONTACT_DRIVER') && offers('SHARE')) const SizedBox(width: 8),
+          if (offers('SHARE')) Expanded(child: OutlinedButton(onPressed: _busy ? null : _share, child: const Text('Share ride'))),
+        ]),
+        const SizedBox(height: 8),
+      ],
       FilledButton.icon(style: FilledButton.styleFrom(backgroundColor: t.colorScheme.error), onPressed: _busy ? null : _sos, icon: const Icon(Icons.sos), label: const Text('SOS')),
     ]);
   }

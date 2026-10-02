@@ -112,7 +112,8 @@ export class SafetyService implements OnModuleInit {
       severity: 'LOW',
       message: 'Your trip ended away from the destination you set.',
       detail: `About ${(dist / 1000).toFixed(1)} km from ${ride.dropoff_address}. If this was not your choice, let us know.`,
-      actions: ALERT_ACTIONS.filter((a) => a.code !== 'CONTACT_DRIVER'),
+      // The trip is over: there is no live ride to share and nobody to contact mid-trip.
+      actions: ALERT_ACTIONS.filter((a) => a.code !== 'CONTACT_DRIVER' && a.code !== 'SHARE'),
     };
     this.realtime.toUser(ride.passenger_id, 'safety.alert', payload);
     this.realtime.toOps('safety.alert', payload);

@@ -79,8 +79,11 @@ describe('safety engine', () => {
     await t.redis.client.flushdb();
     const pSock = await t.socket(passenger);
     const { rideId } = await startTrip(t, passenger, usman);
-    const alert = TestApp.waitFor<{ type: string; severity: string }>(pSock, 'safety.alert', (p) => p.type === 'END_FAR_FROM_DESTINATION');
+    const alert = TestApp.waitFor<{ type: string; severity: string; actions: { code: string }[] }>(pSock, 'safety.alert', (p) => p.type === 'END_FAR_FROM_DESTINATION');
     await t.call(usman, 'post', `/driver/rides/${rideId}/complete`, { lat: LIBERTY.lat + 0.02, lng: LIBERTY.lng });
-    expect((await alert).severity).toBe('LOW');
+    const a = await alert;
+    expect(a.severity).toBe('LOW');
+    // the trip is over: sharing it or calling the driver mid-trip no longer applies
+    expect(a.actions.map((x) => x.code)).toEqual(['SAFE', 'SOS']);
   }, 60000);
 });
