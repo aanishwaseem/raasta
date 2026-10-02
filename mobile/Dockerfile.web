@@ -13,8 +13,9 @@ COPY ${APP} ./${APP}
 WORKDIR /src/${APP}
 ARG API_URL=http://localhost:3000/api/v1
 ARG DEMO_LOCATION=
+ARG DEMO_LOGIN=true
 RUN flutter pub get && flutter build web --release --no-web-resources-cdn \
-    --dart-define=API_URL=${API_URL} --dart-define=DEMO_LOCATION=${DEMO_LOCATION}
+    --dart-define=API_URL=${API_URL} --dart-define=DEMO_LOCATION=${DEMO_LOCATION} --dart-define=DEMO_LOGIN=${DEMO_LOGIN}
 
 FROM nginx:1.27-alpine
 ARG APP
