@@ -39,6 +39,7 @@ class FareExplain extends StatelessWidget {
           row('Base fare', b['base'] as num?),
           row('Distance', b['distance'] as num?),
           row('Time', b['time'] as num?),
+          row('Minimum fare top-up', b['minimumFareAdjustment'] as num?),
           row('Booking fee', b['bookingFee'] as num?),
           row('Demand adjustment', b['demandAdjustment'] as num?),
           row('Shared-ride discount', b['sharedDiscount'] as num?, negative: true),

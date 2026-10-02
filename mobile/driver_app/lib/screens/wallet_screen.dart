@@ -45,7 +45,7 @@ class _WalletScreenState extends State<WalletScreen> {
               const SizedBox(height: 12),
               Row(children: [
                 Expanded(child: _Mini(label: 'Pending', value: money(pending), hint: 'Clears after settlement')),
-                Expanded(child: _Mini(label: 'Completed', value: money(available), hint: 'Ready to withdraw')),
+                Expanded(child: _Mini(label: 'Ready to withdraw', value: money(available < 0 ? 0 : available), hint: 'Minimum Rs 500')),
               ]),
               if (owed > 0) Padding(padding: const EdgeInsets.only(top: 12), child: StatusPill('You owe ${money(owed)}. It is deducted from future earnings.', color: raastaAmber)),
               const SizedBox(height: 16),

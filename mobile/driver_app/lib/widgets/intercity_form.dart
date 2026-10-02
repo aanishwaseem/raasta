@@ -81,8 +81,8 @@ class _IntercityFormState extends State<IntercityForm> {
         const SizedBox(height: 12),
         OutlinedButton.icon(onPressed: _pickWhen, icon: const Icon(Icons.event), label: Text(_when == null ? 'Choose departure date and time' : '${dayLabel(_when!)} at ${clock(_when!)}')),
         const SizedBox(height: 12),
-        TextFormField(controller: _pickup, maxLength: 120, decoration: const InputDecoration(labelText: 'Pickup point'), validator: (v) => (v ?? '').trim().isEmpty ? 'Enter a pickup point' : null),
-        TextFormField(controller: _drop, maxLength: 120, decoration: const InputDecoration(labelText: 'Drop-off point'), validator: (v) => (v ?? '').trim().isEmpty ? 'Enter a drop-off point' : null),
+        TextFormField(controller: _pickup, maxLength: 120, decoration: const InputDecoration(labelText: 'Pickup point', counterText: ''), validator: (v) => (v ?? '').trim().isEmpty ? 'Enter a pickup point' : null),
+        TextFormField(controller: _drop, maxLength: 120, decoration: const InputDecoration(labelText: 'Drop-off point', counterText: ''), validator: (v) => (v ?? '').trim().isEmpty ? 'Enter a drop-off point' : null),
         Row(children: [
           Expanded(child: TextFormField(controller: _seats, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Seats (1-11)'), validator: (v) => _range(v, 1, 11, 'Seats'))),
           const SizedBox(width: 12),

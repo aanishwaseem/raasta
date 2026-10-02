@@ -156,7 +156,7 @@ class _BookingScreenState extends State<BookingScreen> {
     return Scaffold(
       body: Stack(fit: StackFit.expand, children: [
         Positioned(
-          left: 0, right: 0, top: 0, bottom: size.height * 0.28,
+          left: 0, right: 0, top: 0, bottom: size.height * (_quote != null && !_editing ? 0.58 : 0.34),
           child: _pickup == null
               ? const Center(child: CircularProgressIndicator())
               : FullBleedMap(route: route, pins: [
@@ -164,10 +164,10 @@ class _BookingScreenState extends State<BookingScreen> {
                   if (_dropoff != null) MapPin(_dropoff!.lat, _dropoff!.lng, icon: Icons.flag, color: raastaAmber, label: 'Drop-off'),
                 ]),
         ),
-        SafeArea(child: Padding(padding: const EdgeInsets.all(8), child: IconButton.filledTonal(tooltip: 'Back', onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back)))),
+        Positioned(top: 0, left: 0, child: SafeArea(child: Padding(padding: const EdgeInsets.all(8), child: IconButton.filledTonal(tooltip: 'Back', onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back))))),
         Positioned(
           left: 0, right: 0, bottom: 0,
-          child: MapSheet(child: Material(type: MaterialType.transparency, child: SizedBox(width: double.infinity, child: ConstrainedBox(constraints: BoxConstraints(maxHeight: size.height * 0.62), child: SingleChildScrollView(child: _sheet(context)))))),
+          child: MapSheet(child: Material(type: MaterialType.transparency, child: SizedBox(width: double.infinity, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [Flexible(child: ConstrainedBox(constraints: BoxConstraints(maxHeight: size.height * 0.56), child: SingleChildScrollView(child: _sheet(context)))), _footer(context)])))),
         ),
       ]),
     );
@@ -205,11 +205,24 @@ class _BookingScreenState extends State<BookingScreen> {
             promo: _promo, onApplyPromo: _getQuote, safety: _safety, onSafety: (v) => setState(() => _safety = v), promoMessage: _promoMsg, promoOk: _promoOk,
             seats: o['isShared'] == true ? _seats : null, maxSeats: ((o['capacity'] as num?)?.toInt() ?? 4).clamp(1, 4), onSeats: (v) => setState(() => _seats = v),
           ),
-          const SizedBox(height: 8),
-          FilledButton(onPressed: _busy ? null : _request, child: _busy ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5)) : Text('Request ${o['name']} · ${money(payable)}')),
-          TextButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ScheduleRideScreen(api: widget.api, pickup: _pickup, dropoff: _dropoff, productCode: _product))), icon: const Icon(Icons.schedule), label: const Text('Schedule for later instead')),
         ],
       ],
     ]);
+  }
+
+  /// Pinned under the scrolling sheet so the primary action is always reachable.
+  Widget _footer(BuildContext context) {
+    final o = _option;
+    if (_quote == null || _editing || o == null) return const SizedBox.shrink();
+    final fare = asJson(o['fare']);
+    final offer = _offer ?? dbl(fare['recommended']).round();
+    final payable = (offer - dbl(fare['discount'])).clamp(0, 1e9);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        FilledButton(onPressed: _busy ? null : _request, child: _busy ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5)) : Text('Request ${o['name']} · ${money(payable)}')),
+        TextButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ScheduleRideScreen(api: widget.api, pickup: _pickup, dropoff: _dropoff, productCode: _product))), icon: const Icon(Icons.schedule), label: const Text('Schedule for later instead')),
+      ]),
+    );
   }
 }

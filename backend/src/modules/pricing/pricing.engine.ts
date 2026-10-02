@@ -36,6 +36,8 @@ export interface FareBreakdown {
   base: number;
   distance: number;
   time: number;
+  /** Top-up when base + distance + time is below the product's minimum fare, so the lines add up to the fare. */
+  minimumFareAdjustment: number;
   bookingFee: number;
   demandAdjustment: number;
   sharedDiscount: number;
@@ -121,7 +123,7 @@ export function adviseFare(cfg: PricingConfig, distanceM: number, durationS: num
     low,
     high,
     demandMultiplier: mult,
-    breakdown: { base, distance, time, bookingFee: cfg.bookingFee, demandAdjustment, sharedDiscount },
+    breakdown: { base, distance, time, minimumFareAdjustment: metered - (base + distance + time), bookingFee: cfg.bookingFee, demandAdjustment, sharedDiscount },
     expectedMatchSeconds: { atRecommended, atMinimum },
     explanation,
   };

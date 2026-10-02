@@ -57,7 +57,7 @@ class _QuoteProductPickerState extends State<QuoteProductPicker> {
     final tags = recommendationTags(_quote?['recommendations']);
     if (opts.isEmpty) return const InlineBanner('No ride types are available for this trip right now.', icon: Icons.info_outline);
     return Column(children: [
-      for (final o in opts) OptionCard(option: o, selected: o['productCode'] == widget.selected, tags: tags[o['productCode']] ?? const [], onTap: () => widget.onSelected(o['productCode'] as String)),
+      for (final o in opts) OptionCard(showAvailability: false, option: o, selected: o['productCode'] == widget.selected, tags: tags[o['productCode']] ?? const [], onTap: () => widget.onSelected(o['productCode'] as String)),
     ]);
   }
 }

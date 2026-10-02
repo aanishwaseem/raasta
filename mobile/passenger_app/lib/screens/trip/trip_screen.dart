@@ -149,8 +149,8 @@ class _TripScreenState extends State<TripScreen> {
     );
     return Scaffold(
       body: Stack(fit: StackFit.expand, children: [
-        if (r != null) Positioned(left: 0, right: 0, top: 0, bottom: size.height * 0.30, child: _map(r, size)),
-        SafeArea(child: Padding(padding: const EdgeInsets.all(8), child: IconButton.filledTonal(tooltip: 'Back', onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back)))),
+        if (r != null) Positioned(left: 0, right: 0, top: 0, bottom: size.height * (r['driver'] != null ? 0.52 : 0.40), child: _map(r, size)),
+        Positioned(top: 0, left: 0, child: SafeArea(child: Padding(padding: const EdgeInsets.all(8), child: IconButton.filledTonal(tooltip: 'Back', onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back))))),
         if (r == null)
           Center(child: _error == null ? const CircularProgressIndicator() : ErrorState(message: _error!, onRetry: _poll))
         else

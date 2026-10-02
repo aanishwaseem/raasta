@@ -7,19 +7,21 @@ import 'product_icon.dart';
 
 /// One ride category from POST /rides/quotes. [tags] are AI labels (Cheapest, Fastest, Balanced).
 class OptionCard extends StatelessWidget {
-  const OptionCard({super.key, required this.option, required this.selected, required this.onTap, this.tags = const []});
+  const OptionCard({super.key, required this.option, required this.selected, required this.onTap, this.tags = const [], this.showAvailability = true});
   final Json option;
   final bool selected;
   final VoidCallback onTap;
   final List<String> tags;
+  /// False for scheduled rides: live driver availability says nothing about a later time.
+  final bool showAvailability;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final fare = asJson(option['fare']);
     final eta = option['pickupEtaS'];
-    final none = option['availability'] == 'NONE';
-    final limited = option['availability'] == 'LIMITED';
+    final none = showAvailability && option['availability'] == 'NONE';
+    final limited = showAvailability && option['availability'] == 'LIMITED';
     final payable = fare['payable'] ?? fare['recommended'];
     final discount = dbl(fare['discount']);
     final name = (option['name'] ?? option['productCode'] ?? 'Ride').toString();
@@ -27,8 +29,8 @@ class OptionCard extends StatelessWidget {
     final trip = option['tripEtaS'] is num ? '${etaText(option['tripEtaS'] as num)} trip' : null;
     final cap = option['capacity'] is num ? '${option['capacity']} seats' : null;
     final sub = none
-        ? 'No drivers nearby. Matching may take longer.'
-        : [if (eta is num) '${etaText(eta)} away' else (option['description'] ?? '').toString(), if (limited) 'Limited drivers', ?trip, ?cap].where((e) => e.isNotEmpty).join(' · ');
+        ? 'No drivers nearby yet'
+        : [if (showAvailability && eta is num) '${etaText(eta)} away' else (option['description'] ?? '').toString(), if (limited) 'Limited drivers', ?trip, ?cap].where((e) => e.isNotEmpty).join(' · ');
     return Semantics(
       selected: selected,
       button: true,

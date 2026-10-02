@@ -40,6 +40,14 @@ class _PlaceFieldState extends State<PlaceField> {
     _focus.addListener(() => setState(() {}));
   }
 
+  @override
+  void didUpdateWidget(PlaceField old) {
+    super.didUpdateWidget(old);
+    // a place that arrives later (e.g. the device location resolving) fills an untouched field
+    final p = widget.initial;
+    if (p != null && p != old.initial && _c.text.isEmpty && !_focus.hasFocus) _c.text = p.name;
+  }
+
   void _onChanged(String q) {
     widget.onEdited?.call();
     _debounce?.cancel();

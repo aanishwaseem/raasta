@@ -35,7 +35,7 @@ void main() {
     }
     expect(find.text('You are offline'), findsOneWidget);
     expect(find.text('Go online'), findsOneWidget);
-    expect(find.text('Trips today'), findsOneWidget);
+    expect(find.text('Trips'), findsOneWidget);
     expect(find.text('Rs 2,400'), findsOneWidget);
     expect(find.text('Copilot prediction'), findsOneWidget);
     await tester.tap(find.text('Copilot prediction'));

@@ -107,9 +107,9 @@ class _ConfirmCardState extends State<ConfirmCard> {
           Text('Nothing is booked until you confirm. Expires in $mins min.', style: t.textTheme.bodySmall),
           const SizedBox(height: 8),
           Row(children: [
-            Expanded(child: OutlinedButton(onPressed: widget.disabled || _busy ? null : widget.onDismiss, child: const Text('Not now'))),
+            Expanded(flex: 2, child: OutlinedButton(onPressed: widget.disabled || _busy ? null : widget.onDismiss, child: const FittedBox(child: Text('Not now')))),
             const SizedBox(width: 8),
-            Expanded(flex: 2, child: FilledButton(onPressed: widget.disabled || _busy ? null : () async { setState(() => _busy = true); await widget.onConfirm(_pay); if (mounted) setState(() => _busy = false); }, child: Text(label))),
+            Expanded(flex: 3, child: FilledButton(onPressed: widget.disabled || _busy ? null : () async { setState(() => _busy = true); await widget.onConfirm(_pay); if (mounted) setState(() => _busy = false); }, child: Text(label))),
           ]),
         ]),
       ),

@@ -53,6 +53,7 @@ class ReceiptScreen extends StatelessWidget {
         row('Base fare', b['base']),
         row('Distance', b['distance']),
         row('Time', b['time']),
+        row('Minimum fare top-up', b['minimumFareAdjustment']),
         row('Booking fee', b['bookingFee']),
         row('Demand adjustment', b['demandAdjustment']),
         row('Shared-ride discount', b['sharedDiscount'], negative: true),

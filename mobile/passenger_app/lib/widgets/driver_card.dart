@@ -15,7 +15,10 @@ class DriverCard extends StatelessWidget {
     final rating = driver['rating'];
     final car = [v['color'], v['make'], v['model']].where((e) => e != null && e.toString().isNotEmpty).join(' ');
     final plate = v['plateNumber']?.toString();
-    final badges = driver['badges'] is List ? (driver['badges'] as List).map((e) => e.toString()).toList() : <String>[];
+    // badges arrive as {code, label} objects (older payloads: plain codes)
+    final badges = driver['badges'] is List
+        ? [for (final b in driver['badges'] as List) if (b is Map) (b['label'] ?? b['code'] ?? '').toString() else b.toString()].where((e) => e.isNotEmpty).toList()
+        : <String>[];
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: t.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(16)),
@@ -29,7 +32,7 @@ class DriverCard extends StatelessWidget {
               if (rating is num) ...[const SizedBox(width: 8), const Icon(Icons.star_rounded, size: 18, color: raastaAmber), Text(rating.toStringAsFixed(2), style: t.textTheme.labelLarge), Text(' (${driver['ratingCount'] ?? 0})', style: t.textTheme.bodySmall)],
             ]),
             if (car.isNotEmpty) Text(car, style: t.textTheme.bodyMedium),
-            if (badges.isNotEmpty) Text(badges.take(2).map((b) => b.toString().split('_').map((w) => w.isEmpty ? w : '${w[0]}${w.substring(1).toLowerCase()}').join(' ')).join(' · '), style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary)),
+            if (badges.isNotEmpty) Text(badges.take(2).map((b) => b.split('_').map((w) => w.isEmpty ? w : '${w[0]}${w.substring(1).toLowerCase()}').join(' ')).join(' · '), style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary)),
           ]),
         ),
         if (plate != null && plate.isNotEmpty)
