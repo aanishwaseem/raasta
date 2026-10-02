@@ -64,9 +64,17 @@ export class SchedulingService implements OnModuleInit {
     void this.queue.repeat('scheduler', 'generate-occurrences', 6 * 3600_000).catch((e: Error) => this.logger.warn(e.message));
   }
 
+  /** A company account can only be charged by its active members; refuse at creation, not only at dispatch time. */
+  private async assertCorporateMember(userId: string, corporateId?: string | null) {
+    if (!corporateId) return;
+    const m = await this.db.one(`SELECT 1 FROM corporate_users WHERE corporate_id = $1 AND user_id = $2 AND active`, [corporateId, userId]);
+    if (!m) throw AppError.unprocessable('POLICY_VIOLATION', 'You are not a member of this business account', { rule: 'MEMBERSHIP' });
+  }
+
   // -------------------------------------------------------------- one-off
   async create(user: AuthUser, dto: ScheduleRideDto, source: 'APP' | 'VOICE' | 'ASSISTANT' | 'CORPORATE' = 'APP') {
     if (!dto.pickupAt && !dto.targetArrivalAt) throw new AppError('VALIDATION_FAILED', 'Provide a pickup time or a time you need to arrive by');
+    await this.assertCorporateMember(user.id, dto.corporateId);
     const quote = await this.pricing.quote(user.id, dto.pickup, dto.dropoff, { corporateId: dto.corporateId });
     const option = quote.options.find((o) => o.productCode === dto.productCode);
     if (!option) throw AppError.unprocessable('PRODUCT_UNAVAILABLE', 'This ride type is not available for this trip');
@@ -116,6 +124,7 @@ export class SchedulingService implements OnModuleInit {
   // -------------------------------------------------------------- recurring
   async createRecurring(user: AuthUser, dto: RecurringRideDto) {
     if (!dto.pickupTime && !dto.targetArrivalTime) throw new AppError('VALIDATION_FAILED', 'Provide a pickup time or an arrival time');
+    await this.assertCorporateMember(user.id, dto.corporateId);
     const city = await this.pricing.quote(user.id, dto.pickup, dto.dropoff, { corporateId: dto.corporateId });
     const row = await this.db.one<{ id: string }>(
       `INSERT INTO recurring_rides (passenger_id, city_id, label, pickup, pickup_address, dropoff, dropoff_address, product_code, payment_method, days_of_week,

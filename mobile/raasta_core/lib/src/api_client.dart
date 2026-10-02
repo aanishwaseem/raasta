@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import 'realtime_client.dart';
 import 'session_store.dart';
+import 'transport_security.dart';
 
 class ApiException implements Exception {
   ApiException(this.status, this.code, this.message);
@@ -32,9 +33,12 @@ class ApiException implements Exception {
 /// HTTP client for the Raasta API: bearer auth, single-flight token refresh on 401,
 /// and Idempotency-Key support for mutating requests that must not be applied twice.
 class ApiClient {
-  ApiClient({required this.baseUrl, SessionStore? store, http.Client? client, this.useRealtime = false})
+  ApiClient({required this.baseUrl, SessionStore? store, http.Client? client, this.useRealtime = false, List<Duration>? retryDelays})
       : store = store ?? PrefsSessionStore(),
-        _http = client ?? http.Client();
+        _http = client ?? http.Client(),
+        _retryDelays = retryDelays ?? (useRealtime ? const [Duration(milliseconds: 400), Duration(milliseconds: 1200)] : const []) {
+    assertTransportAllowed(baseUrl);
+  }
 
   /// API root, e.g. http://192.168.1.20:3000/api/v1. Phones can't reach the computer as "localhost",
   /// so people running the demo set this on the sign-in screen; it is remembered on the device.
@@ -44,6 +48,10 @@ class ApiClient {
   final bool useRealtime;
   final SessionStore store;
   final http.Client _http;
+
+  /// Pauses between automatic retries of reads and keyed (idempotent) writes after a network failure or 502/503/504.
+  /// Apps retry twice by default; unit tests pass none unless they exercise this.
+  final List<Duration> _retryDelays;
   Session? _session;
   Future<bool>? _refreshing;
   final _logout = StreamController<void>.broadcast();
@@ -61,7 +69,8 @@ class ApiClient {
 
   Future<Session?> restore() async {
     final saved = await store.serverUrl();
-    if (saved != null && saved.isNotEmpty) baseUrl = saved;
+    // a remembered server address is only honoured if it is still allowed in this build (e.g. never http:// in release)
+    if (saved != null && saved.isNotEmpty && isSecureTransportAllowed(saved)) baseUrl = saved;
     return _session = await store.read();
   }
 
@@ -69,9 +78,10 @@ class ApiClient {
   Future<void> setServer(String input) async {
     var v = input.trim();
     if (v.isEmpty) throw ArgumentError('Enter the address of the Raasta server.');
-    if (!v.contains('://')) v = 'http://$v';
+    if (!v.contains('://')) v = '${isSecureTransportAllowed('http://x') ? 'http' : 'https'}://$v';
     final u = Uri.parse(v);
     if (u.host.isEmpty) throw ArgumentError('That address does not look right.');
+    if (!isSecureTransportAllowed(v)) throw ArgumentError('This build only connects over https://.');
     final withPort = u.hasPort ? u : u.replace(port: 3000);
     final path = u.path.isEmpty || u.path == '/' ? '/api/v1' : u.path.replaceAll(RegExp(r'/+$'), '');
     baseUrl = withPort.replace(path: path).toString();
@@ -114,13 +124,14 @@ class ApiClient {
     return s;
   }
 
-  Future<Session> register({required String fullName, String? email, String? phone, required String password, required String role}) async {
+  Future<Session> register({required String fullName, String? email, String? phone, required String password, required String role, String? referralCode}) async {
     final res = await _send('POST', '/auth/register', body: {
       'fullName': fullName,
       if (email != null && email.isNotEmpty) 'email': email,
       if (phone != null && phone.isNotEmpty) 'phone': phone,
       'password': password,
       'role': role,
+      if (referralCode != null && referralCode.isNotEmpty) 'referralCode': referralCode,
       'device': {'deviceId': await store.deviceId(), 'platform': 'android'},
     }, auth: false);
     final t = res['tokens'] as Map<String, dynamic>;
@@ -207,11 +218,21 @@ class ApiClient {
     if (auth && _session != null) req.headers['authorization'] = 'Bearer ${_session!.accessToken}';
     if (idempotencyKey != null) req.headers['idempotency-key'] = idempotencyKey;
     if (body != null) req.body = jsonEncode(body);
-    final http.Response res;
-    try {
-      res = await http.Response.fromStream(await _http.send(req).timeout(const Duration(seconds: 20)));
-    } on Exception {
-      throw ApiException(0, 'NETWORK', 'No connection');
+    // Safe to repeat: reads, and writes that carry an Idempotency-Key (the server replays the first result instead of acting twice).
+    final canRetry = method == 'GET' || idempotencyKey != null;
+    http.Response? res;
+    for (var attempt = 0; res == null; attempt++) {
+      try {
+        final r = await http.Response.fromStream(await _http.send(_copy(req)).timeout(const Duration(seconds: 20)));
+        if (canRetry && attempt < _retryDelays.length && const [502, 503, 504].contains(r.statusCode)) {
+          await Future<void>.delayed(_retryDelays[attempt]);
+          continue;
+        }
+        res = r;
+      } on Exception {
+        if (!canRetry || attempt >= _retryDelays.length) throw ApiException(0, 'NETWORK', 'No connection');
+        await Future<void>.delayed(_retryDelays[attempt]);
+      }
     }
     final text = res.body;
     final dynamic json = text.isEmpty ? null : jsonDecode(text);
@@ -220,6 +241,9 @@ class ApiClient {
     final msg = err?['message'];
     throw ApiException(res.statusCode, (err?['code'] ?? 'ERROR') as String, msg is List ? msg.join(', ') : (msg ?? res.reasonPhrase ?? 'Request failed').toString());
   }
+
+  /// A request can only be sent once, so each attempt gets a fresh copy.
+  http.Request _copy(http.Request r) => http.Request(r.method, r.url)..headers.addAll(r.headers)..body = r.body;
 
   /// One key per user intent. Reuse the same key when retrying the same tap.
   static String newIdempotencyKey() => 'k-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-${_n++}';

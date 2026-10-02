@@ -26,6 +26,7 @@ export type ServerEvent =
   | 'support.ticket_created'
   | 'support.ticket_reply'
   | 'fraud.event_created'
+  | 'delivery.updated'
   | 'notification';
 
 export type ClientHandler = (user: AuthUser, payload: unknown) => Promise<unknown>;
@@ -63,6 +64,12 @@ export class RealtimeService {
   async joinUserToRide(userId: string, rideId: string) {
     if (!this.server) return;
     this.server.in(`user:${userId}`).socketsJoin(`ride:${rideId}`);
+  }
+
+  /** Revoke a user's live subscription (e.g. a driver who cancelled must not keep receiving the next driver's location). */
+  async removeUserFromRide(userId: string, rideId: string) {
+    if (!this.server) return;
+    this.server.in(`user:${userId}`).socketsLeave(`ride:${rideId}`);
   }
 
   async connectionCount(): Promise<number> {

@@ -14,6 +14,7 @@ import { AdminService } from './admin.service';
 import {
   AuditQuery, CancelRideAdminDto, CityDto, CityPatchDto, CityQuery, CorporateAccountDto, CorporateAccountPatchDto, DriverListQuery, ModelActivateDto, PricingUpdateDto, ProcessWithdrawalDto,
   PromotionDto, PromotionPatchDto, RangeQuery, ReasonDto, ResolveSafetyDto, ReviewDocumentDto, ReviewFraudDto, ReviewVehicleDto, RideListQuery, StatusFilterQuery, TrainDto, UpdateTicketDto, UserListQuery,
+  ServiceAreaCreateDto, ServiceAreaPatchDto, StaffReplyDto, ZoneCreateDto, ZonePatchDto,
 } from './dto/admin.dto';
 
 /** Staff API. Class-level ADMIN; endpoints marked SUPPORT are also open to support agents. Every mutation is audited. */
@@ -54,6 +55,8 @@ export class AdminController {
     res.setHeader('content-type', f.contentType);
     res.setHeader('cache-control', 'private, no-store');
     res.setHeader('content-disposition', 'inline');
+    res.setHeader('x-content-type-options', 'nosniff');
+    res.setHeader('content-security-policy', "default-src 'none'; sandbox");
     res.end(f.buffer);
   }
   @Post('vehicles/:id/review') reviewVehicle(@CurrentUser() a: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() d: ReviewVehicleDto, @ReqMeta() m: RequestMeta) { return this.admin.reviewVehicle(a, id, d.decision, d.reason, m); }
@@ -81,7 +84,7 @@ export class AdminController {
   @Roles('ADMIN', 'SUPPORT') @Get('support/tickets') tickets(@Query() q: StatusFilterQuery) { return this.support.adminList(q); }
   @Roles('ADMIN', 'SUPPORT') @Patch('support/tickets/:id') updateTicket(@CurrentUser() a: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() d: UpdateTicketDto, @ReqMeta() m: RequestMeta) { return this.support.adminUpdate(a, id, { status: d.status, priority: d.priority, assignedTo: d.assignedTo }, m); }
   @Roles('ADMIN', 'SUPPORT') @Get('support/tickets/:id') ticket(@CurrentUser() a: AuthUser, @Param('id', ParseUUIDPipe) id: string) { return this.support.get(a, id); }
-  @Roles('ADMIN', 'SUPPORT') @Post('support/tickets/:id/messages') replyTicket(@CurrentUser() a: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() d: { body: string }) { return this.support.addMessage(a, id, d.body); }
+  @Roles('ADMIN', 'SUPPORT') @Post('support/tickets/:id/messages') replyTicket(@CurrentUser() a: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() d: StaffReplyDto) { return this.support.addMessage(a, id, d.body); }
   @Roles('ADMIN', 'SUPPORT') @Get('safety/events') safetyEvents(@Query() q: StatusFilterQuery) { return this.safety.list(q); }
   @Roles('ADMIN', 'SUPPORT') @Post('safety/events/:id/resolve') resolveSafety(@CurrentUser() a: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() d: ResolveSafetyDto) { return this.safety.resolve(a, id, d.status, d.note); }
 
@@ -104,11 +107,11 @@ export class AdminController {
   @Post('cities') createCity(@CurrentUser() a: AuthUser, @Body() d: CityDto, @ReqMeta() m: RequestMeta) { return this.admin.createCity(a, d, m); }
   @Patch('cities/:id') patchCity(@CurrentUser() a: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() d: CityPatchDto, @ReqMeta() m: RequestMeta) { return this.admin.patchCity(a, id, d, m); }
   @Get('zones') zones(@Query() q: CityQuery) { return this.admin.zones(q.cityId); }
-  @Post('zones') createZone(@CurrentUser() a: AuthUser, @Body() d: { cityId: string; code: string; name: string; polygon: number[][] }, @ReqMeta() m: RequestMeta) { return this.admin.createZone(a, d, m); }
-  @Patch('zones/:id') patchZone(@CurrentUser() a: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() d: { active?: boolean; name?: string }, @ReqMeta() m: RequestMeta) { return this.admin.patchZone(a, id, d, m); }
+  @Post('zones') createZone(@CurrentUser() a: AuthUser, @Body() d: ZoneCreateDto, @ReqMeta() m: RequestMeta) { return this.admin.createZone(a, d, m); }
+  @Patch('zones/:id') patchZone(@CurrentUser() a: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() d: ZonePatchDto, @ReqMeta() m: RequestMeta) { return this.admin.patchZone(a, id, d, m); }
   @Get('service-areas') areas(@Query() q: CityQuery) { return this.admin.serviceAreas(q.cityId); }
-  @Post('service-areas') createArea(@CurrentUser() a: AuthUser, @Body() d: { cityId: string; name: string; kind: 'SERVICE' | 'AIRPORT' | 'RESTRICTED'; polygon: number[][] }, @ReqMeta() m: RequestMeta) { return this.admin.createServiceArea(a, d, m); }
-  @Patch('service-areas/:id') patchArea(@CurrentUser() a: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() d: { active?: boolean }, @ReqMeta() m: RequestMeta) { return this.admin.patchServiceArea(a, id, d, m); }
+  @Post('service-areas') createArea(@CurrentUser() a: AuthUser, @Body() d: ServiceAreaCreateDto, @ReqMeta() m: RequestMeta) { return this.admin.createServiceArea(a, d, m); }
+  @Patch('service-areas/:id') patchArea(@CurrentUser() a: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() d: ServiceAreaPatchDto, @ReqMeta() m: RequestMeta) { return this.admin.patchServiceArea(a, id, d, m); }
   @Get('corporate-accounts') corporate() { return this.admin.corporateAccounts(); }
   @Post('corporate-accounts') createCorporate(@CurrentUser() a: AuthUser, @Body() d: CorporateAccountDto, @ReqMeta() m: RequestMeta) { return this.admin.createCorporateAccount(a, d, m); }
   @Patch('corporate-accounts/:id') patchCorporate(@CurrentUser() a: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() d: CorporateAccountPatchDto, @ReqMeta() m: RequestMeta) { return this.admin.patchCorporateAccount(a, id, d, m); }

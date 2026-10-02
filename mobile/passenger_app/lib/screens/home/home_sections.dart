@@ -37,9 +37,10 @@ class WhereToCard extends StatelessWidget {
 }
 
 class GreetingBar extends StatelessWidget {
-  const GreetingBar({super.key, required this.name, required this.onAssistant});
+  const GreetingBar({super.key, required this.name, required this.onAssistant, this.bell});
   final String name;
   final VoidCallback onAssistant;
+  final Widget? bell;
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +53,7 @@ class GreetingBar extends StatelessWidget {
           child: Text(name.isEmpty ? '${greeting()}, where to?' : 'Hi $name, ${greeting().toLowerCase()}', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
       ),
+      if (bell != null) ...[const SizedBox(width: 8), bell!],
       const SizedBox(width: 8),
       IconButton.filledTonal(tooltip: 'Raasta Assistant', constraints: const BoxConstraints(minWidth: 48, minHeight: 48), onPressed: onAssistant, icon: const Icon(Icons.auto_awesome)),
     ]);

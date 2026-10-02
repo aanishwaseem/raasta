@@ -1,0 +1,136 @@
+# Production-shaped stack:  docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+# Differences from the dev stack: every secret is REQUIRED (compose refuses to start without it), no seed data, the
+# production image target, database/redis/ai-service are on an internal network and publish no ports, the API
+# listens on loopback only (put a TLS-terminating reverse proxy in front: see docs/SECURITY_REPORT.md).
+# The backend additionally refuses to boot with weak/dev configuration (config.ts assertProductionSafe).
+name: raasta-prod
+
+x-hardened: &hardened
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  restart: unless-stopped
+
+x-api-env: &api-env
+  NODE_ENV: production
+  DATABASE_URL: postgres://raasta:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/raasta
+  REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379/0
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET (openssl rand -base64 48)}
+  OTP_HMAC_SECRET: ${OTP_HMAC_SECRET:?set OTP_HMAC_SECRET}
+  DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?set DATA_ENCRYPTION_KEY (openssl rand -base64 32)}
+  AI_INTERNAL_TOKEN: ${AI_INTERNAL_TOKEN:?set AI_INTERNAL_TOKEN}
+  METRICS_TOKEN: ${METRICS_TOKEN:?set METRICS_TOKEN}
+  AI_SERVICE_URL: http://ai-service:8000
+  OTP_DEV_ECHO: "false"
+  CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS (comma separated https origins)}
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL (https)}
+  TRACKING_BASE_URL: ${TRACKING_BASE_URL:?set TRACKING_BASE_URL (https)}
+  PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:?set PAYMENT_PROVIDER}
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+  SMS_PROVIDER: ${SMS_PROVIDER:?set SMS_PROVIDER (twilio|http)}
+  TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+  TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+  TWILIO_FROM: ${TWILIO_FROM:-}
+  SMS_HTTP_URL: ${SMS_HTTP_URL:-}
+  SMS_HTTP_AUTH: ${SMS_HTTP_AUTH:-}
+  PUSH_PROVIDER: ${PUSH_PROVIDER:-console}
+  FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
+  GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
+  APPLE_CLIENT_IDS: ${APPLE_CLIENT_IDS:-}
+  STORAGE_DIR: /app/storage
+
+networks:
+  internal:
+    internal: true
+  edge: {}
+
+services:
+  postgres:
+    <<: *hardened
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: raasta
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: raasta
+    networks: [internal]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    # postgres needs a few capabilities at start-up (chown/setuid to the postgres user)
+    cap_drop: []
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U raasta -d raasta"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    <<: *hardened
+    image: redis:7-alpine
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+    networks: [internal]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      retries: 10
+
+  migrate:
+    <<: *hardened
+    build: { context: ./backend, target: prod }
+    restart: "no"
+    command: ["node", "dist/database/migrate.js"]
+    environment: *api-env
+    networks: [internal]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *hardened
+    build: { context: ./backend, target: prod }
+    read_only: true
+    tmpfs: ["/tmp"]
+    environment:
+      <<: *api-env
+      RUN_WORKERS_IN_API: "false"
+    networks: [internal, edge]
+    ports: ["127.0.0.1:3000:3000"]
+    volumes: [storage:/app/storage]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      ai-service: { condition: service_started }
+
+  worker:
+    <<: *hardened
+    build: { context: ./backend, target: prod }
+    read_only: true
+    tmpfs: ["/tmp"]
+    command: ["node", "dist/worker.js"]
+    environment: *api-env
+    networks: [internal, edge]
+    volumes: [storage:/app/storage]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  ai-service:
+    <<: *hardened
+    build: ./ai-service
+    read_only: true
+    tmpfs: ["/tmp"]
+    environment:
+      APP_ENV: production
+      AI_INTERNAL_TOKEN: ${AI_INTERNAL_TOKEN:?set AI_INTERNAL_TOKEN}
+      DATABASE_URL: postgres://raasta:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/raasta
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    networks: [internal, edge]
+    volumes: [models:/srv/models_store]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  redisdata:
+  storage:
+  models:

@@ -13,6 +13,8 @@ Map<String, dynamic> loginBody({List<String> roles = const ['PASSENGER']}) => {
 http.Response json(Object body, [int status = 200]) => http.Response(jsonEncode(body), status, headers: {'content-type': 'application/json'});
 
 void main() {
+  referralTest();
+  retryTests();
   serverUrlTests();
   test('login stores the session and rejects the wrong role', () async {
     final api = ApiClient(baseUrl: 'http://x/api/v1', store: MemorySessionStore(), client: MockClient((_) async => json(loginBody())));
@@ -108,5 +110,46 @@ void serverUrlTests() {
     await other.restore();
     expect(other.baseUrl, 'http://pc.local:4000/api/v1');
     expect(() => api.setServer('  '), throwsArgumentError);
+  });
+}
+
+void referralTest() {
+  test('sign-up sends the referral code only when one was entered', () async {
+    final bodies = <Map<String, dynamic>>[];
+    final api = ApiClient(baseUrl: 'http://x/api/v1', store: MemorySessionStore(), client: MockClient((req) async { bodies.add(jsonDecode(req.body) as Map<String, dynamic>); return json(loginBody()); }));
+    await api.register(fullName: 'Ayesha', email: 'a@x.test', password: 'Passw0rd!x', role: 'PASSENGER', referralCode: 'TBILAL01');
+    await api.register(fullName: 'Ayesha', email: 'a@x.test', password: 'Passw0rd!x', role: 'PASSENGER', referralCode: '');
+    expect(bodies[0]['referralCode'], 'TBILAL01');
+    expect(bodies[1].containsKey('referralCode'), isFalse);
+  });
+}
+
+void retryTests() {
+  test('reads and keyed writes are retried after a network failure; plain writes are not', () async {
+    var gets = 0;
+    var posts = 0;
+    final api = ApiClient(
+      baseUrl: 'http://x/api/v1',
+      store: MemorySessionStore(),
+      retryDelays: const [Duration.zero, Duration.zero],
+      client: MockClient((req) async {
+        if (req.method == 'GET') { if (++gets < 3) throw Exception('offline'); return json({'ok': true}); }
+        posts++;
+        throw Exception('offline');
+      }),
+    );
+    expect((await api.get('/me'))['ok'], true);
+    expect(gets, 3);
+    await expectLater(api.post('/rides', body: {}), throwsA(isA<ApiException>().having((e) => e.code, 'code', 'NETWORK')));
+    expect(posts, 1); // no key, so a retry could double-book
+    await expectLater(api.post('/rides', body: {}, idempotencyKey: 'k-1'), throwsA(isA<ApiException>()));
+    expect(posts, 4); // 1 + (1 try + 2 retries)
+  });
+
+  test('503 is retried and then surfaces if it persists', () async {
+    var n = 0;
+    final api = ApiClient(baseUrl: 'http://x/api/v1', store: MemorySessionStore(), retryDelays: const [Duration.zero], client: MockClient((_) async { n++; return json({'error': {'code': 'X', 'message': 'down'}}, 503); }));
+    await expectLater(api.get('/me'), throwsA(isA<ApiException>().having((e) => e.status, 'status', 503)));
+    expect(n, 2);
   });
 }

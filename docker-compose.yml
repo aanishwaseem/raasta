@@ -14,6 +14,12 @@ x-api-env: &api-env
   OTP_DEV_ECHO: ${OTP_DEV_ECHO:-true}
   STORAGE_DIR: /app/storage
 
+# Hardening applied to every container we build (dev and prod): no privilege escalation, no Linux capabilities.
+x-hardened: &hardened
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+
+# All published ports are bound to loopback: the dev stack (default passwords, OTP echo) must not be reachable from the LAN.
 services:
   postgres:
     image: postgis/postgis:16-3.4
@@ -21,7 +27,7 @@ services:
       POSTGRES_USER: raasta
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-raasta_dev_password}
       POSTGRES_DB: raasta
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       # TCP check: on first boot the image runs a temporary socket-only server and then restarts,
@@ -34,8 +40,8 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
-    ports: ["6379:6379"]
+    command: ["redis-server", "--appendonly", "yes", "--protected-mode", "yes"]
+    ports: ["127.0.0.1:6379:6379"]
     volumes: [redisdata:/data]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -59,11 +65,14 @@ services:
       migrate: { condition: service_completed_successfully }
 
   api:
+    <<: *hardened
     build: ./backend
+    read_only: true
+    tmpfs: ["/tmp"]
     environment:
       <<: *api-env
       RUN_WORKERS_IN_API: "false"
-    ports: ["3000:3000"]
+    ports: ["127.0.0.1:3000:3000"]
     volumes: [storage:/app/storage]
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -72,7 +81,10 @@ services:
       ai-service: { condition: service_started }
 
   worker:
+    <<: *hardened
     build: ./backend
+    read_only: true
+    tmpfs: ["/tmp"]
     command: ["node", "dist/worker.js"]
     environment: *api-env
     volumes: [storage:/app/storage]
@@ -81,28 +93,35 @@ services:
       redis: { condition: service_healthy }
 
   ai-service:
+    <<: *hardened
     build: ./ai-service
     environment:
       APP_ENV: development
       AI_INTERNAL_TOKEN: ${AI_INTERNAL_TOKEN:-dev-only-ai-internal-token}
       DATABASE_URL: postgres://raasta:${POSTGRES_PASSWORD:-raasta_dev_password}@postgres:5432/raasta
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-    ports: ["8000:8000"]
+    ports: ["127.0.0.1:8000:8000"]
     volumes: [models:/srv/models_store]
     depends_on:
       postgres: { condition: service_healthy }
 
   admin:
+    <<: *hardened
+    read_only: true
+    tmpfs: ["/tmp"]
     build:
       context: ./admin
       args:
         VITE_API_URL: http://localhost:3000/api/v1
-    ports: ["5173:5173"]
+    ports: ["127.0.0.1:5173:5173"]
     depends_on: [api]
 
   # Demo apps in the browser (optional, heavy first build: docker compose --profile web up --build). DEMO_LOCATION pins the phone's GPS (Liberty Market, Lahore) so rides work from anywhere;
   # set DEMO_LOCATION= (empty) to use the browser's real location instead.
   passenger-web:
+    <<: *hardened
+    read_only: true
+    tmpfs: ["/tmp"]
     profiles: ["web"]
     build:
       context: ./mobile
@@ -111,10 +130,13 @@ services:
         APP: passenger_app
         API_URL: http://localhost:3000/api/v1
         DEMO_LOCATION: ${DEMO_LOCATION-31.5102,74.3441}
-    ports: ["8080:80"]
+    ports: ["127.0.0.1:8080:8080"]
     depends_on: [api]
 
   driver-web:
+    <<: *hardened
+    read_only: true
+    tmpfs: ["/tmp"]
     profiles: ["web"]
     build:
       context: ./mobile
@@ -123,7 +145,7 @@ services:
         APP: driver_app
         API_URL: http://localhost:3000/api/v1
         DEMO_LOCATION: ${DEMO_LOCATION-31.5102,74.3441}
-    ports: ["8081:80"]
+    ports: ["127.0.0.1:8081:8080"]
     depends_on: [api]
 
 volumes:

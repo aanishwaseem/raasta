@@ -25,9 +25,14 @@ class PlaceField extends StatefulWidget {
   State<PlaceField> createState() => _PlaceFieldState();
 }
 
+Place _fromStored(Map<String, dynamic> m) => Place('${m['name']}', '${m['address']}', dbl(m['lat']), dbl(m['lng']));
+
 class _PlaceFieldState extends State<PlaceField> {
   late final _c = TextEditingController(text: widget.initial?.name ?? '');
   final _focus = FocusNode();
+  final _recent = RecentPlacesStore();
+  List<Place> _recents = [];
+  bool _offlineResults = false;
   List<Place> _results = [];
   Timer? _debounce;
   bool _searching = false;
@@ -38,6 +43,12 @@ class _PlaceFieldState extends State<PlaceField> {
   void initState() {
     super.initState();
     _focus.addListener(() => setState(() {}));
+    _loadRecents();
+  }
+
+  Future<void> _loadRecents() async {
+    final l = (await _recent.load()).map(_fromStored).toList();
+    if (mounted) setState(() => _recents = l);
   }
 
   @override
@@ -65,9 +76,11 @@ class _PlaceFieldState extends State<PlaceField> {
     try {
       final near = widget.near;
       final r = await widget.api.get('/places/search', query: {'q': q.trim(), if (near != null) 'lat': '${near.lat}', if (near != null) 'lng': '${near.lng}'});
-      if (my == _seq && mounted) setState(() { _results = asJsonList(r).map(Place.fromJson).toList(); _searching = false; _failed = false; });
+      if (my == _seq && mounted) setState(() { _results = asJsonList(r).map(Place.fromJson).toList(); _searching = false; _failed = false; _offlineResults = false; });
     } on ApiException {
-      if (my == _seq && mounted) setState(() { _results = []; _searching = false; _failed = true; });
+      // no connection: fall back to places this person already chose on this device
+      final cached = (await _recent.search(q)).map(_fromStored).toList();
+      if (my == _seq && mounted) setState(() { _results = cached; _searching = false; _failed = cached.isEmpty; _offlineResults = cached.isNotEmpty; });
     }
   }
 
@@ -77,6 +90,7 @@ class _PlaceFieldState extends State<PlaceField> {
     _c.text = p.name;
     _focus.unfocus();
     setState(() { _results = []; _searching = false; });
+    unawaited(_recent.add({'name': p.name, 'address': p.address, 'lat': p.lat, 'lng': p.lng}).then((_) => _loadRecents()));
     widget.onPicked(p);
   }
 
@@ -91,8 +105,9 @@ class _PlaceFieldState extends State<PlaceField> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final showShortcuts = _focus.hasFocus && _c.text.isEmpty && widget.shortcuts.isNotEmpty;
-    final list = showShortcuts ? widget.shortcuts : _results;
+    final shortcuts = [...widget.shortcuts, ..._recents.where((r) => !widget.shortcuts.any((s) => (s.lat - r.lat).abs() < 0.0001 && (s.lng - r.lng).abs() < 0.0001))];
+    final showShortcuts = _focus.hasFocus && _c.text.isEmpty && shortcuts.isNotEmpty;
+    final list = showShortcuts ? shortcuts : _results;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       TextField(
         controller: _c,
@@ -108,6 +123,7 @@ class _PlaceFieldState extends State<PlaceField> {
               : (_c.text.isEmpty ? null : IconButton(tooltip: 'Clear', icon: const Icon(Icons.close), onPressed: () { _c.clear(); _onChanged(''); setState(() {}); })),
         ),
       ),
+      if (_offlineResults) Padding(padding: const EdgeInsets.fromLTRB(8, 8, 8, 0), child: Text('You are offline. Showing places you used before.', style: t.textTheme.bodySmall)),
       if (_failed) Padding(padding: const EdgeInsets.fromLTRB(8, 8, 8, 0), child: Text('Search is unavailable right now. Check your connection.', style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.error))),
       if (!_failed && !_searching && _results.isEmpty && _c.text.trim().length >= 2 && !showShortcuts && _focus.hasFocus)
         Padding(padding: const EdgeInsets.fromLTRB(8, 8, 8, 0), child: Text('No places found. Try a landmark or area name.', style: t.textTheme.bodySmall)),

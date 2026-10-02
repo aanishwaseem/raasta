@@ -1,0 +1,11 @@
+**/build
+**/.dart_tool
+**/.flutter-plugins*
+**/*.iml
+**/.env
+**/.env.*
+**/key.properties
+**/*.jks
+**/*.keystore
+**/google-services.json
+**/GoogleService-Info.plist

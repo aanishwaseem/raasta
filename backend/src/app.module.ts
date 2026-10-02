@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtAuthGuard, RolesGuard } from './common/auth/guards';
+import { AdminAuditInterceptor } from './common/audit/admin-audit.interceptor';
 import { CommonModule } from './common/common.module';
 import { HttpExceptionFilter } from './common/errors/http-exception.filter';
 import { IdempotencyInterceptor } from './common/idempotency/idempotency';
@@ -13,6 +14,7 @@ import { HealthModule } from './modules/health/health.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { CorporateModule } from './modules/business/corporate.module';
+import { DeliveryModule } from './modules/delivery/delivery.controller';
 import { IntercityModule } from './modules/intercity/intercity.module';
 import { SupportModule } from './modules/support/support.module';
 import { AdminModule } from './modules/admin/admin.module';
@@ -39,6 +41,7 @@ import { UsersModule } from './modules/users/users.module';
     AssistantModule,
     CorporateModule,
     IntercityModule,
+    DeliveryModule,
     SupportModule,
     AdminModule,
     MaintenanceModule,
@@ -51,6 +54,7 @@ import { UsersModule } from './modules/users/users.module';
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: RateLimitGuard },
     { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: AdminAuditInterceptor },
   ],
 })
 export class AppModule {}

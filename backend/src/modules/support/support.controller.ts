@@ -30,5 +30,7 @@ export class SupportController {
   }
   @Get() list(@CurrentUser() u: AuthUser, @Query() q: PageQuery) { return this.support.list(u, q); }
   @Get(':id') get(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string) { return this.support.get(u, id); }
-  @Post(':id/messages') message(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TicketMessageDto) { return this.support.addMessage(u, id, dto.body); }
+  @Post(':id/messages')
+  @RateLimit({ name: 'ticket-message', limit: 30, windowSec: 600, by: 'user' })
+  message(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TicketMessageDto) { return this.support.addMessage(u, id, dto.body); }
 }

@@ -11,6 +11,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { SmsProvider } from '../../common/providers/messaging';
 import { AppError } from '../../common/errors/app-error';
 import { hmac, normalizePkPhone, randomDigits, randomToken, safeEqualHex, sha256 } from '../../common/crypto/crypto';
+import { canonicalSubject } from '../../common/rate-limit/rate-limit';
 import { signAccessToken } from '../../common/auth/jwt';
 import { revokedSessionKey } from '../../common/auth/guards';
 import type { Role } from '../../common/auth/auth.types';
@@ -24,6 +25,21 @@ export interface AuthResult {
   isNewUser: boolean;
 }
 
+/** OWASP Password Storage Cheat Sheet: argon2id m=19 MiB, t=2, p=1 (minimum recommended profile). */
+export const ARGON2_OPTIONS = { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 } as const;
+
+/** Failed password attempts per account (any IP) before the account is locked; unknown identifiers are counted the same way. */
+export const LOGIN_LOCK_THRESHOLD = 10;
+export const LOGIN_LOCK_WINDOW_S = 15 * 60;
+const MAX_ACTIVE_SESSIONS = 10;
+const INCR_WITH_TTL = `local c = redis.call('INCR', KEYS[1]) if c == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end return c`;
+
+/** Only a provider-verified address may be trusted (Apple sends the string "true"). A missing claim is NOT verified. */
+export function verifiedEmail(claims: Record<string, unknown>): string | null {
+  const verified = claims.email_verified === true || claims.email_verified === 'true';
+  return typeof claims.email === 'string' && claims.email && verified ? claims.email.toLowerCase() : null;
+}
+
 const OTP_TTL_S = 300;
 const OTP_MAX_ATTEMPTS = 5;
 const REFRESH_REUSE_GRACE_MS = 10_000;
@@ -34,7 +50,7 @@ const appleJwks = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/key
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly dummyHash = argon2.hash('timing-equaliser', { type: argon2.argon2id, memoryCost: 19456, timeCost: 2 });
+  private readonly dummyHash = argon2.hash('timing-equaliser', ARGON2_OPTIONS);
 
   constructor(
     private readonly db: DatabaseService,
@@ -54,7 +70,7 @@ export class AuthService {
     if (email && (await this.users.findByEmail(email))) throw AppError.conflict('EMAIL_TAKEN', 'An account with this email already exists');
     if (phone && (await this.users.findByPhone(phone))) throw AppError.conflict('PHONE_TAKEN', 'An account with this phone number already exists');
 
-    const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id, memoryCost: 19456, timeCost: 2 });
+    const passwordHash = await argon2.hash(dto.password, ARGON2_OPTIONS);
     const userId = await this.db.tx(async (c) => {
       const id = await this.createUser(c, { fullName: dto.fullName, email, phone, passwordHash, role: dto.role, referralCode: dto.referralCode });
       await c.query(`INSERT INTO consents (user_id, kind, granted) VALUES ($1, 'TERMS', true)`, [id]);
@@ -66,13 +82,25 @@ export class AuthService {
 
   async login(dto: LoginDto, meta: RequestMeta): Promise<AuthResult> {
     const identifier = dto.identifier.trim();
+    const lockKey = `lockout:login:${canonicalSubject(identifier)}`;
+    // Per-account lockout, independent of the caller's IP (distributed guessing). Unknown identifiers lock identically,
+    // so the response never reveals whether an account exists.
+    const failures = Number((await this.redis.client.get(lockKey)) ?? 0);
+    if (failures >= LOGIN_LOCK_THRESHOLD) {
+      const ttl = Math.max(1, await this.redis.client.ttl(lockKey));
+      throw new AppError('ACCOUNT_LOCKED', 'Too many failed sign-in attempts. Please wait a few minutes or sign in with a code sent to your phone.', 429, { retryAfterSeconds: ttl });
+    }
     const phone = normalizePkPhone(identifier);
     const user = identifier.includes('@') ? await this.users.findByEmail(identifier) : phone ? await this.users.findByPhone(phone) : null;
     // Always run a hash verification to keep timing uniform for unknown accounts.
     const hash = user?.password_hash ?? (await this.dummyHash);
     const ok = await argon2.verify(hash, dto.password).catch(() => false);
-    if (!user || !ok) throw AppError.unauthenticated('Incorrect email/phone or password', 'INVALID_CREDENTIALS');
+    if (!user || !ok) {
+      await this.redis.client.eval(INCR_WITH_TTL, 1, lockKey, String(LOGIN_LOCK_WINDOW_S));
+      throw AppError.unauthenticated('Incorrect email/phone or password', 'INVALID_CREDENTIALS');
+    }
     this.assertActive(user.status);
+    await this.redis.client.del(lockKey);
     return this.completeLogin(user.id, dto.device, meta, false);
   }
 
@@ -81,6 +109,8 @@ export class AuthService {
     const phone = normalizePkPhone(dto.phone);
     if (!phone) throw new AppError('INVALID_PHONE', 'Please enter a valid Pakistani mobile number');
     const code = randomDigits(6);
+    // only the newest code is ever valid (an attacker cannot accumulate several live codes to guess against)
+    await this.db.query(`UPDATE otp_codes SET consumed_at = now() WHERE phone = $1 AND consumed_at IS NULL`, [phone]);
     await this.db.query(
       `INSERT INTO otp_codes (phone, purpose, code_hash, expires_at) VALUES ($1, $2, $3, now() + make_interval(secs => $4))`,
       [phone, dto.purpose, hmac(config().OTP_HMAC_SECRET, `${phone}:${code}`), OTP_TTL_S],
@@ -99,20 +129,28 @@ export class AuthService {
       [phone],
     );
     if (!otp) throw new AppError('OTP_EXPIRED', 'This code has expired. Please request a new one.', 400);
-    if (otp.attempts >= OTP_MAX_ATTEMPTS) throw new AppError('OTP_LOCKED', 'Too many incorrect attempts. Please request a new code.', 429);
+    // Count the attempt atomically BEFORE comparing, so parallel guesses cannot exceed the limit.
+    const counted = await this.db.one<{ attempts: number }>(
+      `UPDATE otp_codes SET attempts = attempts + 1 WHERE id = $1 AND attempts < $2 AND consumed_at IS NULL RETURNING attempts`,
+      [otp.id, OTP_MAX_ATTEMPTS],
+    );
+    if (!counted) throw new AppError('OTP_LOCKED', 'Too many incorrect attempts. Please request a new code.', 429);
     const candidate = hmac(config().OTP_HMAC_SECRET, `${phone}:${dto.code}`);
     if (!safeEqualHex(candidate, otp.code_hash)) {
-      await this.db.query(`UPDATE otp_codes SET attempts = attempts + 1 WHERE id = $1`, [otp.id]);
-      throw new AppError('OTP_INVALID', 'That code is not correct', 400, { attemptsLeft: OTP_MAX_ATTEMPTS - otp.attempts - 1 });
+      throw new AppError('OTP_INVALID', 'That code is not correct', 400, { attemptsLeft: OTP_MAX_ATTEMPTS - counted.attempts });
     }
 
     let user = await this.users.findByPhone(phone);
     let isNew = false;
+    if (!user && !dto.fullName) {
+      // do not consume: the client will resend with the name
+      await this.db.query(`UPDATE otp_codes SET attempts = GREATEST(attempts - 1, 0) WHERE id = $1`, [otp.id]);
+      throw new AppError('NAME_REQUIRED', 'Please tell us your name to create your account', 400, { isNewUser: true });
+    }
+    // Single use: exactly one concurrent request can consume the code.
+    const consumed = await this.db.one(`UPDATE otp_codes SET consumed_at = now() WHERE id = $1 AND consumed_at IS NULL RETURNING id`, [otp.id]);
+    if (!consumed) throw new AppError('OTP_EXPIRED', 'This code has already been used. Please request a new one.', 400);
     if (!user) {
-      if (!dto.fullName) {
-        // do not consume: the client will resend with the name
-        throw new AppError('NAME_REQUIRED', 'Please tell us your name to create your account', 400, { isNewUser: true });
-      }
       const id = await this.db.tx(async (c) => {
         const uid = await this.createUser(c, { fullName: dto.fullName!, email: null, phone, passwordHash: null, role: dto.role ?? 'PASSENGER' });
         await c.query(`INSERT INTO consents (user_id, kind, granted) VALUES ($1, 'TERMS', true)`, [uid]);
@@ -123,7 +161,6 @@ export class AuthService {
       isNew = true;
     }
     this.assertActive(user!.status);
-    await this.db.query(`UPDATE otp_codes SET consumed_at = now() WHERE id = $1`, [otp.id]);
     await this.db.query(`UPDATE users SET phone_verified_at = COALESCE(phone_verified_at, now()) WHERE id = $1`, [user!.id]);
     return this.completeLogin(user!.id, dto.device, meta, isNew);
   }
@@ -132,7 +169,7 @@ export class AuthService {
   async oauth(dto: OAuthDto, meta: RequestMeta): Promise<AuthResult> {
     const claims = await this.verifyIdToken(dto.provider, dto.idToken);
     const subject = String(claims.sub);
-    const email = typeof claims.email === 'string' && claims.email_verified !== false ? claims.email.toLowerCase() : null;
+    const email = verifiedEmail(claims);
     const linked = await this.db.one<{ user_id: string }>(`SELECT user_id FROM oauth_identities WHERE provider=$1 AND subject=$2`, [dto.provider, subject]);
     let userId = linked?.user_id;
     let isNew = false;
@@ -140,6 +177,14 @@ export class AuthService {
       const existing = email ? await this.users.findByEmail(email) : null;
       if (existing) {
         userId = existing.id;
+        if (!existing.email_verified_at) {
+          // Pre-hijack defence: this address was never verified by its owner, so whoever registered it (and knows its
+          // password or holds its sessions) may be an attacker who squatted the victim's email. The provider has now proven
+          // control of the address, so the legitimate owner takes the account and every pre-existing credential is dropped.
+          await this.db.query(`UPDATE users SET password_hash = NULL WHERE id = $1`, [userId]);
+          await this.revokeAllForUser(userId, 'EMAIL_OWNERSHIP_PROVEN_BY_OAUTH');
+          await this.audit.log({ action: 'security.oauth_unverified_email_takeover', entityType: 'user', entityId: userId, meta });
+        }
       } else {
         if (!email) throw new AppError('EMAIL_REQUIRED', 'Your account provider did not share a verified email address');
         const name = dto.fullName ?? (typeof claims.name === 'string' ? claims.name : email.split('@')[0]);
@@ -205,6 +250,11 @@ export class AuthService {
   async logout(sid: string): Promise<void> {
     await this.db.query(`UPDATE auth_sessions SET revoked_at = now(), revoked_reason = 'LOGOUT' WHERE id = $1 AND revoked_at IS NULL`, [sid]);
     await this.redis.client.set(revokedSessionKey(sid), '1', 'EX', config().JWT_ACCESS_TTL_SECONDS);
+  }
+
+  /** Sign out everywhere (lost phone, suspected compromise). */
+  async logoutAll(userId: string): Promise<void> {
+    await this.revokeAllForUser(userId, 'LOGOUT_ALL');
   }
 
   async listSessions(userId: string, currentSid: string) {
@@ -295,6 +345,14 @@ export class AuthService {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now() + make_interval(days => $9)) RETURNING id`,
       [userId, familyId ?? randomUUID(), sha256(refreshToken), device.deviceId, device.deviceName ?? null, device.platform ?? null, meta.ip, meta.userAgent?.slice(0, 300) ?? null, config().REFRESH_TTL_DAYS],
     );
+    // bound the number of live sessions per account (oldest are signed out)
+    const evicted = await this.db.query<{ id: string }>(
+      `UPDATE auth_sessions SET revoked_at = now(), revoked_reason = 'SESSION_LIMIT'
+        WHERE id IN (SELECT id FROM auth_sessions WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now() ORDER BY last_used_at DESC, created_at DESC OFFSET $2)
+        RETURNING id`,
+      [userId, MAX_ACTIVE_SESSIONS],
+    );
+    for (const r of evicted) await this.redis.client.set(revokedSessionKey(r.id), '1', 'EX', config().JWT_ACCESS_TTL_SECONDS);
     const accessToken = await signAccessToken({ id: userId, roles, sid: session!.id });
     const user = await this.users.publicById(userId);
     return { user: user!, tokens: { accessToken, refreshToken, expiresIn: config().JWT_ACCESS_TTL_SECONDS }, isNewUser: isNew };

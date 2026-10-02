@@ -217,7 +217,7 @@ export class AdminService {
     const view = await this.views.build(ride, 'STAFF');
     const [events, offers, payments, locations, safety] = await Promise.all([
       this.rideRepo.events(id),
-      this.db.query(`SELECT driver_id AS "driverId", attempt, rank, score::float AS score, status, pickup_eta_s AS "pickupEtaS", score_breakdown AS "scoreBreakdown", created_at AS "createdAt" FROM ride_requests WHERE ride_id = $1 ORDER BY attempt, rank`, [id]),
+      this.db.query(`SELECT driver_id AS "driverId", attempt, rank, score::float AS score, status, pickup_eta_s AS "pickupEtaS", score_breakdown AS "scoreBreakdown", sent_at AS "createdAt" FROM ride_requests WHERE ride_id = $1 ORDER BY attempt, rank`, [id]),
       this.db.query(`SELECT id, purpose, method, provider, amount, status, failure_reason AS "failureReason", created_at AS "createdAt" FROM payments WHERE ride_id = $1 ORDER BY created_at`, [id]),
       this.db.query(`SELECT phase, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng, recorded_at AS "recordedAt" FROM ride_locations WHERE ride_id = $1 ORDER BY recorded_at LIMIT 1000`, [id]),
       this.db.query(`SELECT id, type, severity, status, created_at AS "createdAt" FROM safety_events WHERE ride_id = $1 ORDER BY created_at`, [id]),

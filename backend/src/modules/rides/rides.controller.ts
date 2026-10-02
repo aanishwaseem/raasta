@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Header, Injectable, Param, ParseUUIDPipe, PipeTransform, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
@@ -10,6 +10,15 @@ import { SafetyService } from '../safety/safety.service';
 import { RidesService } from './rides.service';
 import { RideViewService } from './ride-view.service';
 import { CancelRideDto, QuoteRequestDto, RatingDto, RideHistoryQuery, RideRequestDto, SafetyResponseDto, ShareRideDto, SosDto } from './dto/rides.dto';
+
+/** Tracking tokens are 32 url-safe characters; anything else is rejected before touching the database. */
+@Injectable()
+class ParseTokenPipe implements PipeTransform<string, string> {
+  transform(v: string): string {
+    if (!/^[A-Za-z0-9_-]{20,64}$/.test(v)) throw new BadRequestException('Invalid tracking link');
+    return v;
+  }
+}
 
 class RetryDto {
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(50) @Max(100000) offeredFare?: number;
@@ -75,6 +84,7 @@ export class RidesController {
   }
 
   @Post(':id/rating')
+  @RateLimit({ name: 'rating', limit: 20, windowSec: 600, by: 'user' })
   rate(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RatingDto) {
     return this.rides.rate(u, id, dto);
   }
@@ -85,6 +95,7 @@ export class RidesController {
   }
 
   @Post(':id/share')
+  @RateLimit({ name: 'ride-share', limit: 10, windowSec: 3600, by: 'user' }) // each share can send an SMS to a third party
   share(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ShareRideDto) {
     return this.safety.createShare(u, id, { contactIds: dto.emergencyContactIds, name: dto.name, phone: dto.phone });
   }
@@ -109,8 +120,11 @@ export class SafetyController {
 
   @Public()
   @Get('public/track/:token')
+  @Header('Cache-Control', 'no-store')
+  @Header('Referrer-Policy', 'no-referrer')
+  @Header('X-Robots-Tag', 'noindex, nofollow')
   @RateLimit({ name: 'track', limit: 60, windowSec: 60, by: 'ip' })
-  track(@Param('token') token: string) {
+  track(@Param('token', new ParseTokenPipe()) token: string) {
     return this.safety.publicTrack(token);
   }
 }

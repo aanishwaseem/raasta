@@ -37,6 +37,7 @@ class ProfileScreen extends StatelessWidget {
             const SectionTitle('More'),
             InfoTile(icon: Icons.alt_route, title: 'Intercity trips', subtitle: 'Post seats between cities', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => IntercityScreen(api: api)))),
             const SizedBox(height: 8),
+            InfoTile(icon: Icons.devices_outlined, title: 'Signed-in devices', subtitle: 'See and sign out other phones', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SessionsScreen(api: api)))),
             InfoTile(icon: Icons.support_agent, title: 'Support', subtitle: 'Tickets and replies', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SupportScreen(api: api)))),
             const SizedBox(height: 16),
             Text('Map data © OpenStreetMap contributors', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),

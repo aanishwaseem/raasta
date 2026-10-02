@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth.types';
 import { PageQuery } from '../../common/dto';
+import { DevicesController } from './devices.controller';
 import { NotificationsService } from './notifications.service';
 
 @ApiTags('me')
@@ -31,7 +32,7 @@ export class NotificationsController {
 
 @Global()
 @Module({
-  controllers: [NotificationsController],
+  controllers: [NotificationsController, DevicesController],
   providers: [NotificationsService],
   exports: [NotificationsService],
 })

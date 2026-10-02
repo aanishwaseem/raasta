@@ -1,4 +1,7 @@
-import { Controller, Get, Header, Module, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get, Header, Headers, Module, ServiceUnavailableException } from '@nestjs/common';
+import { timingSafeEqual } from 'crypto';
+import { config } from '../../config/config';
+import { AppError } from '../../common/errors/app-error';
 import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/auth/decorators';
 import { DatabaseService } from '../../common/db/database.service';
@@ -36,7 +39,11 @@ export class HealthController {
   @Public()
   @Get('metrics')
   @Header('Content-Type', 'text/plain; version=0.0.4')
-  metricsText() {
+  metricsText(@Headers('authorization') authorization?: string) {
+    // Prometheus must send `Authorization: Bearer <METRICS_TOKEN>`; metrics expose route names, volumes and failure rates.
+    const given = Buffer.from(authorization?.startsWith('Bearer ') ? authorization.slice(7) : '');
+    const expected = Buffer.from(config().METRICS_TOKEN);
+    if (given.length !== expected.length || !timingSafeEqual(given, expected)) throw AppError.unauthenticated();
     return this.metrics.registry.metrics();
   }
 }
