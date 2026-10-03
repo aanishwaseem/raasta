@@ -42,10 +42,15 @@ jobs:
       - run: flutter pub get
       # The phone address is entered on the sign-in screen, so one APK works on any network.
       # DEMO_LOCATION pins the GPS to Lahore so the seeded data works from anywhere.
+      # Demo APKs talk to a computer on the LAN over http, so cleartext is enabled for this build only.
+      # Real releases must use https (the app refuses http in release builds without ALLOW_INSECURE_HTTP).
       - run: >
           flutter build apk --release
           --dart-define=API_URL=http://10.0.2.2:3000/api/v1
           --dart-define=DEMO_LOCATION=31.5102,74.3441 --dart-define=DEMO_LOGIN=true
+          --dart-define=ALLOW_INSECURE_HTTP=true
+        env:
+          ORG_GRADLE_PROJECT_allowCleartext: "true"
       - run: cp build/app/outputs/flutter-apk/app-release.apk ${{ github.workspace }}/${{ matrix.name }}.apk
       - uses: actions/upload-artifact@v4
         with:

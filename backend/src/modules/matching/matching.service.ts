@@ -267,6 +267,8 @@ export class MatchingService implements OnModuleInit {
     await this.realtime.joinUserToRide(driverId, ride.id);
     this.metrics.matchLatency.observe((Date.now() - ride.requested_at.getTime()) / 1000);
     this.metrics.matchOutcomes.inc({ outcome: 'assigned' });
+    // closes the loop on the "expected matching time" shown at booking (kind FARE, value = seconds)
+    await this.predictions.resolve('FARE', 'ride', ride.id, (Date.now() - ride.requested_at.getTime()) / 1000).catch(() => undefined);
     await this.predictions.log({
       kind: 'ETA_PICKUP',
       model: 'eta',

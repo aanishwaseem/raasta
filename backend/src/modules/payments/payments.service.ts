@@ -27,6 +27,9 @@ interface RideForPayment {
   payment_status: string;
 }
 
+/** Paid referral rewards per referrer per 30 days. */
+export const REFERRAL_MAX_PER_30_DAYS = 20;
+
 export interface SettlementResult {
   status: 'PAID' | 'FAILED';
   method: string;
@@ -353,26 +356,28 @@ export class PaymentsService implements OnModuleInit {
   }
 
   async processWithdrawal(admin: AuthUser, withdrawalId: string, decision: 'PAID' | 'REJECTED', note?: string) {
-    const w = await this.db.one<{ id: string; driver_id: string; amount: number; status: string }>(`SELECT id, driver_id, amount, status FROM withdrawals WHERE id = $1`, [withdrawalId]);
-    if (!w) throw AppError.notFound('Withdrawal');
-    if (w.status !== 'REQUESTED') throw AppError.conflict('ALREADY_PROCESSED', 'This withdrawal was already processed');
     const clearingW = await this.ledger.wallet('PLATFORM_CASH_CLEARING', null);
-    const otherW = decision === 'PAID' ? await this.ledger.wallet('PAYMENT_GATEWAY', null) : await this.ledger.wallet('DRIVER', w.driver_id);
-    await this.db.tx(async (c) => {
+    const w = await this.db.tx(async (c) => {
+      // Row lock: two admins (or a double click) deciding PAID and REJECTED at once must not both post to the ledger.
+      const row = await this.db.one<{ id: string; driver_id: string; amount: number; status: string }>(`SELECT id, driver_id, amount, status FROM withdrawals WHERE id = $1 FOR UPDATE`, [withdrawalId], c);
+      if (!row) throw AppError.notFound('Withdrawal');
+      if (row.status !== 'REQUESTED') throw AppError.conflict('ALREADY_PROCESSED', 'This withdrawal was already processed');
+      const otherW = decision === 'PAID' ? await this.ledger.wallet('PAYMENT_GATEWAY', null, c) : await this.ledger.wallet('DRIVER', row.driver_id, c);
       await this.ledger.post(c, {
         kind: decision === 'PAID' ? 'WITHDRAWAL_SETTLED' : 'REFUND',
-        idempotencyKey: `withdrawal:${w.id}:${decision}`,
-        description: decision === 'PAID' ? `Withdrawal paid out Rs ${w.amount}` : `Withdrawal rejected, Rs ${w.amount} returned`,
+        idempotencyKey: `withdrawal:${row.id}:${decision}`,
+        description: decision === 'PAID' ? `Withdrawal paid out Rs ${row.amount}` : `Withdrawal rejected, Rs ${row.amount} returned`,
         referenceType: 'withdrawal',
-        referenceId: w.id,
+        referenceId: row.id,
         createdBy: admin.id,
         entries: [
-          { walletId: clearingW, amount: -w.amount },
-          { walletId: otherW, amount: w.amount },
+          { walletId: clearingW, amount: -row.amount },
+          { walletId: otherW, amount: row.amount },
         ],
       });
-      await c.query(`UPDATE withdrawals SET status = $2, processed_by = $3, processed_at = now() WHERE id = $1`, [w.id, decision, admin.id]);
-      await this.audit.log({ actor: admin, action: `withdrawal.${decision.toLowerCase()}`, entityType: 'withdrawal', entityId: w.id, after: { decision }, reason: note }, c);
+      await c.query(`UPDATE withdrawals SET status = $2, processed_by = $3, processed_at = now() WHERE id = $1`, [row.id, decision, admin.id]);
+      await this.audit.log({ actor: admin, action: `withdrawal.${decision.toLowerCase()}`, entityType: 'withdrawal', entityId: row.id, after: { decision }, reason: note }, c);
+      return row;
     });
     await this.notifications.notify({
       userId: w.driver_id,
@@ -395,6 +400,18 @@ export class PaymentsService implements OnModuleInit {
       [refereeId, u.referred_by],
     );
     const amount = config().REFERRAL_REWARD_PKR;
+    // velocity cap: one referrer cannot farm rewards with a stream of throw-away accounts
+    const recent = await this.db.one<{ n: number }>(
+      `SELECT count(*)::int AS n FROM referral_rewards WHERE referrer_id = $1 AND status = 'PAID' AND created_at > now() - interval '30 days'`,
+      [u.referred_by],
+    );
+    if ((recent?.n ?? 0) >= REFERRAL_MAX_PER_30_DAYS) {
+      await this.db.query(
+        `INSERT INTO referral_rewards (referrer_id, referee_id, ride_id, amount, status, blocked_reason) VALUES ($1,$2,$3,$4,'BLOCKED','referrer velocity limit') ON CONFLICT (referee_id) DO NOTHING`,
+        [u.referred_by, refereeId, rideId, amount],
+      );
+      return;
+    }
     if (sharedDevice) {
       await this.db.query(
         `INSERT INTO referral_rewards (referrer_id, referee_id, ride_id, amount, status, blocked_reason) VALUES ($1,$2,$3,$4,'BLOCKED','same device') ON CONFLICT (referee_id) DO NOTHING`,

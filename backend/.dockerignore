@@ -1,4 +1,10 @@
 node_modules
 dist
 storage
+storage-test
 .env
+.env.*
+coverage
+test
+*.log
+dump.rdb

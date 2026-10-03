@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService, geoPoint } from '../../common/db/database.service';
+import { AuthUser, isStaff } from '../../common/auth/auth.types';
 import { AppError } from '../../common/errors/app-error';
 import { normalizePkPhone } from '../../common/crypto/crypto';
 import { latLngSql } from '../../common/dto';
@@ -70,7 +71,18 @@ export class UsersService {
     return this.me(userId);
   }
 
-  async avatar(userId: string): Promise<{ data: Buffer; type: string }> {
+  /**
+   * A profile photo is visible to its owner, to staff, and to someone who shares (or shared) a ride with them: the passenger sees the
+   * driver who picked them up, and the driver sees the passenger. Everyone else gets the same 404 as "no avatar" (no enumeration).
+   */
+  async avatar(viewer: AuthUser, userId: string): Promise<{ data: Buffer; type: string }> {
+    if (viewer.id !== userId && !isStaff(viewer)) {
+      const related = await this.db.one(
+        `SELECT 1 FROM rides WHERE (passenger_id = $1 AND driver_id = $2) OR (passenger_id = $2 AND driver_id = $1) LIMIT 1`,
+        [viewer.id, userId],
+      );
+      if (!related) throw AppError.notFound('Avatar');
+    }
     const row = await this.db.one<{ avatar_key: string | null }>(`SELECT avatar_key FROM users WHERE id=$1 AND status <> 'DELETED'`, [userId]);
     if (!row?.avatar_key) throw AppError.notFound('Avatar');
     const data = await this.storage.get(row.avatar_key);

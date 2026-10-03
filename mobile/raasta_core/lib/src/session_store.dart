@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class Session {
@@ -24,24 +28,54 @@ abstract class SessionStore {
 }
 
 /// Persists the session on the device. Tokens never leave this store except in Authorization headers.
+/// On Android/iOS the tokens live in the platform keystore (Keychain / EncryptedSharedPreferences), not in plain
+/// SharedPreferences. Flutter web has no keystore, so there it falls back to SharedPreferences (browser storage) which
+/// is why the web builds are demo-only. Non-secret settings (server address, device id) stay in SharedPreferences.
 class PrefsSessionStore implements SessionStore {
+  PrefsSessionStore({FlutterSecureStorage? secure}) : _secure = secure ?? const FlutterSecureStorage(aOptions: AndroidOptions(encryptedSharedPreferences: true));
   static const _k = 'raasta.session';
+  final FlutterSecureStorage _secure;
 
-  @override
-  Future<Session?> read() async {
-    final p = await SharedPreferences.getInstance();
-    final v = p.getStringList(_k);
+  Session? _decode(List<String>? v) {
     if (v == null || v.length < 4) return null;
     return Session(accessToken: v[0], refreshToken: v[1], name: v[2], roles: v[3].isEmpty ? [] : v[3].split(','));
   }
 
   @override
+  Future<Session?> read() async {
+    final p = await SharedPreferences.getInstance();
+    if (kIsWeb) return _decode(p.getStringList(_k));
+    try {
+      final raw = await _secure.read(key: _k);
+      if (raw != null) return _decode((jsonDecode(raw) as List).cast<String>());
+    } catch (_) {
+      // unreadable keystore entry (e.g. restored backup on a new device): treat as signed out
+    }
+    // one-time migration of a session saved by an older build in plain SharedPreferences
+    final legacy = _decode(p.getStringList(_k));
+    if (legacy != null) {
+      await write(legacy);
+      await p.remove(_k);
+    }
+    return legacy;
+  }
+
+  @override
   Future<void> write(Session? s) async {
     final p = await SharedPreferences.getInstance();
-    if (s == null) {
-      await p.remove(_k);
-    } else {
-      await p.setStringList(_k, [s.accessToken, s.refreshToken, s.name, s.roles.join(',')]);
+    if (kIsWeb) {
+      s == null ? await p.remove(_k) : await p.setStringList(_k, [s.accessToken, s.refreshToken, s.name, s.roles.join(',')]);
+      return;
+    }
+    await p.remove(_k);
+    try {
+      if (s == null) {
+        await _secure.delete(key: _k);
+      } else {
+        await _secure.write(key: _k, value: jsonEncode([s.accessToken, s.refreshToken, s.name, s.roles.join(',')]));
+      }
+    } catch (_) {
+      // never fall back to storing tokens in the clear; the user simply has to sign in again next launch
     }
   }
 

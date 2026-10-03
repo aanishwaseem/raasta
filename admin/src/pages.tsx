@@ -3,6 +3,7 @@ import { DriverReview } from './DriverReview';
 import { patch, post } from './api';
 import { ReasonButton } from './Actions';
 import { useFetch } from './hooks';
+import { RideDetail, TicketThread } from './pagesDetail';
 import { Badge, ListPage, Stat, money, when } from './ui';
 
 export function Overview() {
@@ -85,7 +86,12 @@ export const Users = () => (
 );
 
 const ACTIVE_RIDE = ['MATCHING', 'DRIVER_ASSIGNED', 'DRIVER_ARRIVING', 'DRIVER_ARRIVED', 'IN_PROGRESS'];
-export const Rides = () => (
+export function Rides() {
+  const [open, setOpen] = useState<string | null>(null);
+  return <>{RidesList(setOpen)}{open && <RideDetail id={open} onClose={() => setOpen(null)} />}</>;
+}
+
+const RidesList = (onOpen: (id: string) => void) => (
   <ListPage<any> title="Rides" path="/admin/rides"
     filters={[{ key: 'status', label: 'Status', options: ['MATCHING', 'DRIVER_ASSIGNED', 'DRIVER_ARRIVING', 'DRIVER_ARRIVED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NO_DRIVERS'] }, { key: 'q', label: 'Search passenger, address or id' }]}
     cols={(reload) => [
@@ -96,7 +102,7 @@ export const Rides = () => (
       { head: 'Fare', cell: (r) => money(r.finalFare ?? r.offeredFare) },
       { head: 'Payment', cell: (r) => <>{r.paymentMethod} <Badge v={r.paymentStatus} /></> },
       { head: 'Status', cell: (r) => <Badge v={r.status} /> },
-      { head: 'Actions', cell: (r) => ACTIVE_RIDE.includes(r.status) ? <ReasonButton danger label="Cancel" path={`/admin/rides/${r.id}/cancel`} onDone={reload} /> : null },
+      { head: 'Actions', cell: (r) => <div className="toolbar"><button onClick={() => onOpen(r.id)}>Details</button>{ACTIVE_RIDE.includes(r.status) && <ReasonButton danger label="Cancel" path={`/admin/rides/${r.id}/cancel`} onDone={reload} />}</div> },
     ]} />
 );
 
@@ -120,14 +126,20 @@ export const Withdrawals = () => (
     ]} />
 );
 
-export const Tickets = () => (
-  <ListPage<any> title="Support tickets" path="/admin/support/tickets"
+export function Tickets() {
+  const [open, setOpen] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  return <>{TicketsList(setOpen, tick)}{open && <TicketThread id={open} onClose={() => setOpen(null)} onChanged={() => setTick((n) => n + 1)} />}</>;
+}
+
+const TicketsList = (onOpen: (id: string) => void, tick: number) => (
+  <ListPage<any> key={tick} title="Support tickets" path="/admin/support/tickets"
     filters={[{ key: 'status', label: 'Status', options: ['OPEN', 'IN_PROGRESS', 'WAITING_ON_USER', 'RESOLVED', 'CLOSED'] }, { key: 'priority', label: 'Priority', options: ['LOW', 'NORMAL', 'HIGH', 'URGENT'] }]}
     cols={(reload) => [
       { head: 'Created', cell: (r) => when(r.createdAt) },
       { head: 'User', cell: (r) => r.userName },
       { head: 'Category', cell: (r) => r.category },
-      { head: 'Subject', cell: (r) => r.subject },
+      { head: 'Subject', cell: (r) => <a href="#support" onClick={(e) => { e.preventDefault(); onOpen(r.id); }}>{r.subject}</a> },
       { head: 'Priority', cell: (r) => <Badge v={r.priority} /> },
       { head: 'Status', cell: (r) => (
         <select value={r.status} onChange={async (e) => { try { await patch(`/admin/support/tickets/${r.id}`, { status: e.target.value }); reload(); } catch (err) { window.alert((err as Error).message); } }}>

@@ -9,6 +9,7 @@ const DEV_SECRET_MARKER = 'dev-only';
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  LOG_FORMAT: z.enum(['auto', 'json', 'text']).default('auto'), // auto = json in production, text elsewhere
   PORT: z.coerce.number().default(3000),
   PUBLIC_BASE_URL: z.string().default('http://localhost:3000'),
   TRACKING_BASE_URL: z.string().default('http://localhost:5173/track'),
@@ -19,10 +20,12 @@ const schema = z.object({
   DATABASE_POOL_MAX: z.coerce.number().default(20),
   REDIS_URL: z.string().default('redis://localhost:6379/0'),
 
-  JWT_ACCESS_SECRET: z.string().default(`${DEV_SECRET_MARKER}-access-secret-change-me-0123456789`),
-  JWT_ACCESS_TTL_SECONDS: z.coerce.number().default(900),
-  REFRESH_TTL_DAYS: z.coerce.number().default(30),
-  OTP_HMAC_SECRET: z.string().default(`${DEV_SECRET_MARKER}-otp-secret-change-me-0123456789abc`),
+  // secrets must be at least 32 chars in EVERY environment (HS256 key strength); dev defaults are 32+ but flagged unsafe for production
+  JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters').default(`${DEV_SECRET_MARKER}-access-secret-change-me-0123456789`),
+  /** Short-lived access tokens limit the blast radius of a stolen token (revocation also works via the session denylist). */
+  JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
+  REFRESH_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
+  OTP_HMAC_SECRET: z.string().min(32, 'OTP_HMAC_SECRET must be at least 32 characters').default(`${DEV_SECRET_MARKER}-otp-secret-change-me-0123456789abc`),
   DATA_ENCRYPTION_KEY: z
     .string()
     .default('ZGV2LW9ubHktZW5jcnlwdGlvbi1rZXktMzJieXRlcyE='), // base64 of 32 bytes, dev only
@@ -41,7 +44,15 @@ const schema = z.object({
   NOMINATIM_URL: z.string().default('https://nominatim.openstreetmap.org'),
   PAYMENT_PROVIDER: z.enum(['mock', 'stripe']).default('mock'),
   STRIPE_SECRET_KEY: z.string().default(''),
-  SMS_PROVIDER: z.enum(['console']).default('console'),
+  SMS_PROVIDER: z.enum(['console', 'twilio', 'http']).default('console'),
+  TWILIO_ACCOUNT_SID: z.string().default(''),
+  TWILIO_AUTH_TOKEN: z.string().default(''),
+  TWILIO_FROM: z.string().default(''),
+  SMS_HTTP_URL: z.string().default(''),
+  SMS_HTTP_AUTH: z.string().default(''),
+  SMS_SENDER_ID: z.string().default('Raasta'),
+  PUSH_PROVIDER: z.enum(['console', 'fcm']).default('console'),
+  FCM_SERVICE_ACCOUNT_JSON: z.string().default(''),
   STORAGE_DIR: z.string().default('./storage'),
   MAX_UPLOAD_BYTES: z.coerce.number().default(8 * 1024 * 1024),
 
@@ -103,9 +114,29 @@ export function assertProductionSafe(cfg: AppConfig): void {
   }
   if (cfg.OTP_DEV_ECHO) problems.push('OTP_DEV_ECHO must be false');
   if (cfg.DATABASE_URL.includes('raasta_dev_password')) problems.push('DATABASE_URL uses the development password');
+  if (cfg.PAYMENT_PROVIDER === 'mock') problems.push('PAYMENT_PROVIDER=mock must not be used in production (it approves test card tokens)');
+  if (cfg.PAYMENT_PROVIDER === 'stripe' && !cfg.STRIPE_SECRET_KEY) problems.push('STRIPE_SECRET_KEY is required when PAYMENT_PROVIDER=stripe');
+  if (cfg.SMS_PROVIDER === 'console') problems.push('SMS_PROVIDER=console must not be used in production (OTPs would never reach users)');
+  if (cfg.SMS_PROVIDER === 'twilio' && !(cfg.TWILIO_ACCOUNT_SID && cfg.TWILIO_AUTH_TOKEN && cfg.TWILIO_FROM)) problems.push('TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM are required when SMS_PROVIDER=twilio');
+  if (cfg.SMS_PROVIDER === 'http' && !cfg.SMS_HTTP_URL) problems.push('SMS_HTTP_URL is required when SMS_PROVIDER=http');
+  if (cfg.PUSH_PROVIDER === 'fcm' && !cfg.FCM_SERVICE_ACCOUNT_JSON) problems.push('FCM_SERVICE_ACCOUNT_JSON is required when PUSH_PROVIDER=fcm');
+  if (new Set([cfg.JWT_ACCESS_SECRET, cfg.OTP_HMAC_SECRET, cfg.METRICS_TOKEN, cfg.AI_INTERNAL_TOKEN]).size !== 4) problems.push('JWT_ACCESS_SECRET, OTP_HMAC_SECRET, METRICS_TOKEN and AI_INTERNAL_TOKEN must all be different');
+  const origins = cfg.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean);
+  if (!origins.length || origins.some((o) => o === '*' || /localhost|127\.0\.0\.1/.test(o) || !o.startsWith('https://'))) {
+    problems.push('CORS_ORIGINS must be an explicit list of https:// origins (no wildcard, no localhost)');
+  }
+  if (!cfg.PUBLIC_BASE_URL.startsWith('https://')) problems.push('PUBLIC_BASE_URL must be https://');
+  if (!cfg.TRACKING_BASE_URL.startsWith('https://')) problems.push('TRACKING_BASE_URL must be https://');
   if (problems.length) {
     throw new Error(`Refusing to start in production with unsafe configuration: ${problems.join(', ')}`);
   }
+}
+
+/** CORS allowlist shared by HTTP and Socket.IO. A wildcard is never accepted together with credentials. */
+export function corsOrigins(cfg: Pick<AppConfig, 'CORS_ORIGINS'> = config()): string[] {
+  const list = cfg.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean);
+  if (list.includes('*')) throw new Error('CORS_ORIGINS must not contain "*" (credentials are enabled); list explicit origins');
+  return list;
 }
 
 export function config(): AppConfig {

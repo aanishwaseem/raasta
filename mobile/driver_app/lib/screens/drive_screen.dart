@@ -77,7 +77,9 @@ class _DriveScreenState extends State<DriveScreen> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Expanded(child: _StatusCard(online: _c.online, hasOffer: o != null)),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
+                  NotificationBell(api: widget.api),
+                  const SizedBox(width: 8),
                   SosButton(api: widget.api, location: widget.location, position: pos),
                 ]),
                 if (_c.networkDown) Padding(padding: const EdgeInsets.only(top: 8), child: NetworkBanner(onRetry: () { _c.loadCopilot(); _c.pollOffer(); })),

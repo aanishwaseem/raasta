@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { PageQuery } from '../../../common/dto';
 
 export class ReasonDto {
@@ -8,24 +8,24 @@ export class ReasonDto {
 }
 export class UserListQuery extends PageQuery {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) q?: string;
-  @ApiPropertyOptional({ enum: ['PASSENGER', 'DRIVER', 'ADMIN', 'SUPPORT', 'CORPORATE_ADMIN'] }) @IsOptional() @IsString() role?: string;
+  @ApiPropertyOptional({ enum: ['PASSENGER', 'DRIVER', 'ADMIN', 'SUPPORT', 'CORPORATE_ADMIN'] }) @IsOptional() @IsString() @MaxLength(40) role?: string;
   @ApiPropertyOptional({ enum: ['ACTIVE', 'SUSPENDED', 'DELETED'] }) @IsOptional() @IsIn(['ACTIVE', 'SUSPENDED', 'DELETED']) status?: string;
 }
 export class DriverListQuery extends PageQuery {
-  @ApiPropertyOptional({ enum: ['ONBOARDING', 'PENDING_REVIEW', 'APPROVED', 'REJECTED', 'SUSPENDED'] }) @IsOptional() @IsString() status?: string;
+  @ApiPropertyOptional({ enum: ['ONBOARDING', 'PENDING_REVIEW', 'APPROVED', 'REJECTED', 'SUSPENDED'] }) @IsOptional() @IsString() @MaxLength(40) status?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) q?: string;
 }
 export class RideListQuery extends PageQuery {
-  @ApiPropertyOptional() @IsOptional() @IsString() status?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) status?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() cityId?: string;
   @ApiPropertyOptional() @IsOptional() @IsISO8601() from?: string;
   @ApiPropertyOptional() @IsOptional() @IsISO8601() to?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(60) q?: string;
 }
 export class StatusFilterQuery extends PageQuery {
-  @ApiPropertyOptional() @IsOptional() @IsString() status?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() level?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() priority?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) status?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) level?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) priority?: string;
 }
 export class ReviewDocumentDto extends ReasonDto {
   @ApiProperty({ enum: ['APPROVED', 'REJECTED'] }) @IsIn(['APPROVED', 'REJECTED']) decision: 'APPROVED' | 'REJECTED';
@@ -64,7 +64,7 @@ export class PromotionDto {
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) usageLimitTotal?: number;
   @ApiPropertyOptional({ default: 1 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) usageLimitPerUser?: number;
   @ApiPropertyOptional() @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) productCodes?: string[];
-  @ApiPropertyOptional() @IsOptional() @IsArray() @IsUUID('all', { each: true }) cityIds?: string[];
+  @ApiPropertyOptional() @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) cityIds?: string[];
   @ApiPropertyOptional() @IsOptional() @IsBoolean() newUsersOnly?: boolean;
 }
 export class PromotionPatchDto {
@@ -109,9 +109,9 @@ export class AuditQuery extends PageQuery {
 export class RangeQuery {
   @ApiPropertyOptional() @IsOptional() @IsISO8601() from?: string;
   @ApiPropertyOptional() @IsOptional() @IsISO8601() to?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() metric?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) metric?: string;
   @ApiPropertyOptional({ enum: ['hour', 'day'] }) @IsOptional() @IsIn(['hour', 'day']) interval?: 'hour' | 'day';
-  @ApiPropertyOptional() @IsOptional() @IsString() includeTestData?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) includeTestData?: string;
 }
 export class CityQuery {
   @ApiPropertyOptional() @IsOptional() @IsUUID() cityId?: string;
@@ -127,4 +127,36 @@ export class CorporateAccountDto {
 export class CorporateAccountPatchDto extends ReasonDto {
   @ApiPropertyOptional({ enum: ['ACTIVE', 'SUSPENDED'] }) @IsOptional() @IsIn(['ACTIVE', 'SUSPENDED']) status?: 'ACTIVE' | 'SUSPENDED';
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) monthlyBudget?: number;
+}
+
+export class StaffReplyDto {
+  @ApiProperty() @IsString() @MinLength(1) @MaxLength(4000) body: string;
+}
+/** Polygon ring as [lng, lat] pairs. */
+const polygonDecorators = () => (target: object, key: string) => {
+  IsArray()(target, key);
+  ArrayMinSize(3)(target, key);
+  ArrayMaxSize(1000)(target, key);
+  IsArray({ each: true })(target, key);
+  ArrayMinSize(2, { each: true })(target, key);
+  ArrayMaxSize(2, { each: true })(target, key);
+};
+export class ZoneCreateDto {
+  @ApiProperty() @IsUUID() cityId: string;
+  @ApiProperty() @IsString() @Matches(/^[A-Za-z0-9_-]{2,30}$/) code: string;
+  @ApiProperty() @IsString() @MaxLength(80) name: string;
+  @ApiProperty({ description: '[lng, lat] pairs' }) @polygonDecorators() polygon: number[][];
+}
+export class ZonePatchDto {
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) name?: string;
+}
+export class ServiceAreaCreateDto {
+  @ApiProperty() @IsUUID() cityId: string;
+  @ApiProperty() @IsString() @MaxLength(80) name: string;
+  @ApiProperty({ enum: ['SERVICE', 'AIRPORT', 'RESTRICTED'] }) @IsIn(['SERVICE', 'AIRPORT', 'RESTRICTED']) kind: 'SERVICE' | 'AIRPORT' | 'RESTRICTED';
+  @ApiProperty({ description: '[lng, lat] pairs' }) @polygonDecorators() polygon: number[][];
+}
+export class ServiceAreaPatchDto {
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
 }

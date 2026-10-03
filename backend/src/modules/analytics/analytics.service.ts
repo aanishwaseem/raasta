@@ -58,6 +58,13 @@ export class AnalyticsService {
               (SELECT count(*) FROM drivers WHERE status = 'PENDING_REVIEW')::int AS "pendingDrivers",
               (SELECT count(*) FROM withdrawals WHERE status = 'REQUESTED')::int AS "pendingWithdrawals"`,
     );
+    // section 78 ratios, from recorded events in the same window (null until there are rides to divide by)
+    const ev = await this.db.one<{ safety: number; tickets: number }>(
+      `SELECT (SELECT count(*) FROM safety_events WHERE created_at >= $1 AND created_at < $2)::int AS safety,
+              (SELECT count(*) FROM support_tickets WHERE created_at >= $1 AND created_at < $2)::int AS tickets`,
+      [r.from, r.to],
+    );
+    const per1000 = (n: number | undefined) => (Number(rides!.requested) ? Math.round(((n ?? 0) / Number(rides!.requested)) * 10000) / 10 : null);
     const requested = Number(rides!.requested);
     const completed = Number(rides!.completed);
     const decided = completed + Number(rides!.cancelled) + Number(rides!.noDrivers);
@@ -65,7 +72,7 @@ export class AnalyticsService {
       range: { from: r.from.toISOString(), to: r.to.toISOString() },
       rides: { ...rides, completionRate: decided ? round(completed / decided) : null, fulfilmentRate: requested ? round(completed / requested) : null },
       money: { gmv: rides!.gmv, discounts: rides!.discounts, platformRevenue: revenue?.fees ?? 0, currency: 'PKR' },
-      quality: { avgPassengerRating: ratings?.avg ?? null, ratingCount: ratings?.n ?? 0 },
+      quality: { avgPassengerRating: ratings?.avg ?? null, ratingCount: ratings?.n ?? 0, safetyEventsPer1000Rides: per1000(ev?.safety), supportTicketsPer1000Rides: per1000(ev?.tickets) },
       queues: open,
       onlineDriversNow: await this.onlineNow(),
       includesTestData: inc,

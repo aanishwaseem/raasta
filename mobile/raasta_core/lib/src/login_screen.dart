@@ -17,6 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _id = TextEditingController();
   final _pw = TextEditingController();
   final _name = TextEditingController();
+  final _referral = TextEditingController();
   bool _signup = false;
   bool _phone = false;
   bool _codeSent = false;
@@ -56,7 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       if (_signup) {
         final id = _id.text.trim();
-        await widget.api.register(fullName: _name.text.trim(), email: id.contains('@') ? id : null, phone: id.contains('@') ? null : id, password: _pw.text, role: widget.role);
+        await widget.api.register(fullName: _name.text.trim(), email: id.contains('@') ? id : null, phone: id.contains('@') ? null : id, password: _pw.text, role: widget.role, referralCode: _referral.text.trim().toUpperCase());
       } else {
         await widget.api.login(_id.text.trim(), _pw.text, requiredRole: widget.role);
       }
@@ -96,6 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _id.dispose();
     _pw.dispose();
     _name.dispose();
+    _referral.dispose();
     _code.dispose();
     super.dispose();
   }
@@ -139,6 +141,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     if (_hint != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(_hint!, style: t.textTheme.bodySmall)),
                   ] else if (!_phone)
                     TextField(controller: _pw, obscureText: true, autofillHints: const [AutofillHints.password], onSubmitted: (_) => _submit(), decoration: InputDecoration(prefixIcon: const Icon(Icons.lock_outline), labelText: _signup ? 'Password (8+ characters, letters and numbers)' : 'Password')),
+                  if (_signup && !driver && !_phone) ...[const SizedBox(height: 12), TextField(controller: _referral, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(prefixIcon: Icon(Icons.card_giftcard_outlined), labelText: 'Referral code (optional)'))],
                   if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Row(children: [Icon(Icons.error_outline, size: 18, color: t.colorScheme.error), const SizedBox(width: 8), Expanded(child: Text(_error!, style: TextStyle(color: t.colorScheme.error)))])),
                   const SizedBox(height: 20),
                   FilledButton(onPressed: _busy || (_phone && _codeSent && _code.text.trim().length != 6) ? null : _submit, child: _busy ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5)) : Text(_phone ? (_codeSent ? 'Verify and continue' : 'Send code') : _signup ? 'Create account' : 'Sign in')),

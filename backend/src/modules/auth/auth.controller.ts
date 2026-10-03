@@ -74,6 +74,14 @@ export class AuthController {
   }
 
   @ApiBearerAuth()
+  @Post('logout-all')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Sign out of every device' })
+  async logoutAll(@CurrentUser() user: AuthUser) {
+    await this.auth.logoutAll(user.id);
+  }
+
+  @ApiBearerAuth()
   @Get('sessions')
   sessions(@CurrentUser() user: AuthUser) {
     return this.auth.listSessions(user.id, user.sid);

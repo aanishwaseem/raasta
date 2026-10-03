@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestj
 import { Type } from 'class-transformer';
 import { IsDateString, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
+import { RateLimit } from '../../common/rate-limit/rate-limit';
 import type { AuthUser } from '../../common/auth/auth.types';
 import { Idempotent } from '../../common/idempotency/idempotency';
 import { IntercityService } from './intercity.service';
@@ -35,6 +36,7 @@ export class IntercityController {
   @Get('intercity/trips') trips(@Query() q: TripsQuery) { return this.intercity.trips(q); }
 
   @Post('intercity/trips/:id/book')
+  @RateLimit({ name: 'intercity-book', limit: 20, windowSec: 3600, by: 'user' })
   @Roles('PASSENGER')
   @Idempotent('intercity-book')
   book(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BookDto) {
@@ -43,7 +45,7 @@ export class IntercityController {
   @Get('intercity/bookings') @Roles('PASSENGER') bookings(@CurrentUser() u: AuthUser) { return this.intercity.myBookings(u.id); }
   @Delete('intercity/bookings/:id') @Roles('PASSENGER') cancelBooking(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string) { return this.intercity.cancelBooking(u.id, id); }
 
-  @Post('driver/intercity/trips') @Roles('DRIVER') post(@CurrentUser() u: AuthUser, @Body() dto: PostTripDto) { return this.intercity.postTrip(u.id, dto); }
+  @Post('driver/intercity/trips') @Roles('DRIVER') @RateLimit({ name: 'intercity-post', limit: 20, windowSec: 3600, by: 'user' }) post(@CurrentUser() u: AuthUser, @Body() dto: PostTripDto) { return this.intercity.postTrip(u.id, dto); }
   @Get('driver/intercity/trips') @Roles('DRIVER') mine(@CurrentUser() u: AuthUser) { return this.intercity.myTrips(u.id); }
   @Delete('driver/intercity/trips/:id') @Roles('DRIVER') cancelTrip(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string) { return this.intercity.cancelTrip(u.id, id); }
 }

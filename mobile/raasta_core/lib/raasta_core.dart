@@ -8,3 +8,7 @@ export 'src/map_view.dart';
 export 'src/realtime_client.dart';
 export 'src/location_reporter.dart';
 export 'src/widgets.dart';
+export 'src/notifications.dart';
+export 'src/recent_places.dart';
+export 'src/sessions_screen.dart';
+export 'src/transport_security.dart';

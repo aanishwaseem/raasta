@@ -139,7 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Column(children: [
-              GreetingBar(name: _name, onAssistant: () => _push(AssistantScreen(api: widget.api, location: widget.location))),
+              GreetingBar(name: _name, bell: NotificationBell(api: widget.api), onAssistant: () => _push(AssistantScreen(api: widget.api, location: widget.location))),
               const SizedBox(height: 10),
               WhereToCard(onTap: () => _book(), onMic: () => _push(AssistantScreen(api: widget.api, location: widget.location, voiceMode: true))),
               if (_locNote != null) Padding(padding: const EdgeInsets.only(top: 8), child: Material(borderRadius: BorderRadius.circular(12), color: Theme.of(context).colorScheme.surface, child: Padding(padding: const EdgeInsets.all(10), child: Text(_locNote!, style: Theme.of(context).textTheme.bodySmall)))),

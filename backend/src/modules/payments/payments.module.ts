@@ -8,6 +8,7 @@ import { CurrentUser, Roles } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth.types';
 import { PageQuery } from '../../common/dto';
 import { Idempotent } from '../../common/idempotency/idempotency';
+import { RateLimit } from '../../common/rate-limit/rate-limit';
 import { LedgerService } from './ledger.service';
 import { MockPaymentProvider, PaymentProvider, StripePaymentProvider } from './payment-provider';
 import { PaymentsService } from './payments.service';
@@ -46,6 +47,7 @@ export class PaymentsController {
   @Post('wallet/topups')
   @Roles('PASSENGER')
   @Idempotent('wallet-topup')
+  @RateLimit({ name: 'topup-hour', limit: 10, windowSec: 3600, by: 'user' }, { name: 'topup-min', limit: 3, windowSec: 60, by: 'user' })
   topup(@CurrentUser() u: AuthUser, @Body() dto: TopupDto, @Req() req: Request) {
     return this.payments.topup(u.id, dto.amount, dto.paymentMethodId, String(req.headers['idempotency-key']));
   }
@@ -56,6 +58,7 @@ export class PaymentsController {
   }
 
   @Post('payment-methods')
+  @RateLimit({ name: 'pm-add', limit: 10, windowSec: 3600, by: 'user' }) // card-testing defence
   addMethod(@CurrentUser() u: AuthUser, @Body() dto: AddPaymentMethodDto) {
     return this.payments.addPaymentMethod(u.id, dto.provider, dto.token);
   }
@@ -67,6 +70,7 @@ export class PaymentsController {
   }
 
   @Post('rides/:id/pay-cash')
+  @RateLimit({ name: 'pay-cash', limit: 10, windowSec: 600, by: 'user' })
   payCash(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.payments.fallbackToCash(id, u);
   }

@@ -71,7 +71,21 @@ export class PromotionsService {
 
   /** Reserve inside the ride-creation transaction (prevents over-redemption races via row lock). */
   async reserve(client: Queryable, promotionId: string, userId: string, rideId: string, amount: number): Promise<void> {
-    await client.query(`SELECT id FROM promotions WHERE id = $1 FOR UPDATE`, [promotionId]);
+    const p = await this.db.one<{ usage_limit_total: number | null; usage_limit_per_user: number }>(
+      `SELECT usage_limit_total, usage_limit_per_user FROM promotions WHERE id = $1 FOR UPDATE`,
+      [promotionId],
+      client,
+    );
+    // re-check limits UNDER the lock: preview() ran before it, so two concurrent requests could both have passed it
+    const usage = await this.db.one<{ total: number; mine: number }>(
+      `SELECT count(*) FILTER (WHERE status <> 'RELEASED')::int AS total, count(*) FILTER (WHERE status <> 'RELEASED' AND user_id = $2)::int AS mine
+         FROM promotion_redemptions WHERE promotion_id = $1`,
+      [promotionId, userId],
+      client,
+    );
+    if (!p || (p.usage_limit_total !== null && (usage?.total ?? 0) >= p.usage_limit_total) || (usage?.mine ?? 0) >= p.usage_limit_per_user) {
+      throw AppError.unprocessable('PROMO_NOT_APPLICABLE', 'This promo code has been fully used');
+    }
     await client.query(`INSERT INTO promotion_redemptions (promotion_id, user_id, ride_id, amount) VALUES ($1,$2,$3,$4)`, [promotionId, userId, rideId, amount]);
   }
 

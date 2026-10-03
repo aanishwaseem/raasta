@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
-import { IsOptional, IsUUID } from 'class-validator';
+import { IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 import { CurrentUser, ReqMeta, RequestMeta, Roles } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth.types';
 import { PageQuery } from '../../common/dto';
@@ -9,6 +9,9 @@ import { AddEmployeeDto, BudgetDto, CorporateScheduleDto, PolicyDto, UpdateEmplo
 
 class CorpQuery {
   @ApiPropertyOptional() @IsOptional() @IsUUID() corporateId?: string;
+}
+class InvoiceQuery extends CorpQuery {
+  @ApiPropertyOptional({ example: '2026-10' }) @IsString() @Matches(/^\d{4}-(0[1-9]|1[0-2])$/) month: string;
 }
 class CorpPageQuery extends PageQuery {
   @ApiPropertyOptional() @IsOptional() @IsUUID() corporateId?: string;
@@ -29,6 +32,6 @@ export class CorporateController {
   @Put('policy') setPolicy(@CurrentUser() u: AuthUser, @Body() dto: PolicyDto, @Query() q: CorpQuery, @ReqMeta() m: RequestMeta) { return this.corp.setPolicy(u, dto, q.corporateId, m); }
   @Patch('budget') budget(@CurrentUser() u: AuthUser, @Body() dto: BudgetDto, @Query() q: CorpQuery, @ReqMeta() m: RequestMeta) { return this.corp.setBudget(u, dto, q.corporateId, m); }
   @Get('rides') rides(@CurrentUser() u: AuthUser, @Query() q: CorpPageQuery) { return this.corp.rides(u, q, q.corporateId); }
-  @Get('invoices') invoice(@CurrentUser() u: AuthUser, @Query('month') month: string, @Query() q: CorpQuery) { return this.corp.invoice(u, month, q.corporateId); }
+  @Get('invoices') invoice(@CurrentUser() u: AuthUser, @Query() q: InvoiceQuery) { return this.corp.invoice(u, q.month, q.corporateId); }
   @Post('scheduled-rides') schedule(@CurrentUser() u: AuthUser, @Body() dto: CorporateScheduleDto, @Query() q: CorpQuery) { return this.corp.scheduleForEmployee(u, dto, q.corporateId); }
 }

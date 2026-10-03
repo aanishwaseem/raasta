@@ -98,6 +98,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _tile(Icons.auto_awesome_outlined, 'Raasta Assistant', 'Book by typing or dictating', () => _go(AssistantScreen(api: widget.api, location: widget.location))),
       _tile(Icons.tune, 'Preferences', 'Notifications and language', () => _go(PreferencesScreen(api: widget.api))),
       _tile(Icons.privacy_tip_outlined, 'Privacy and personalization', 'Consents, your data, smart suggestions', () => _go(PrivacyScreen(api: widget.api))),
+      _tile(Icons.devices_outlined, 'Signed-in devices', 'See and sign out other phones', () => _go(SessionsScreen(api: widget.api))),
       _tile(Icons.support_agent_outlined, 'Help and support', 'Tickets and replies', () => _go(SupportScreen(api: widget.api))),
       const SectionTitle('Session'),
       _tile(Icons.logout, 'Sign out', null, _signOut),

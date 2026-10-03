@@ -27,6 +27,9 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Cleartext http is OFF in release builds. Debug/profile builds re-enable it (src/debug and src/profile manifests).
+        // LAN demo release build only: ORG_GRADLE_PROJECT_allowCleartext=true flutter build apk --dart-define=ALLOW_INSECURE_HTTP=true ...
+        manifestPlaceholders["usesCleartextTraffic"] = (project.findProperty("allowCleartext") ?: "false").toString()
     }
 
     buildTypes {

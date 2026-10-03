@@ -14,11 +14,19 @@ WORKDIR /src/${APP}
 ARG API_URL=http://localhost:3000/api/v1
 ARG DEMO_LOCATION=
 ARG DEMO_LOGIN=true
+# DEMO image only: it is served over plain http on localhost. Set to false (and use an https API_URL) for anything real.
+ARG ALLOW_INSECURE_HTTP=true
 RUN flutter pub get && flutter build web --release --no-web-resources-cdn \
-    --dart-define=API_URL=${API_URL} --dart-define=DEMO_LOCATION=${DEMO_LOCATION} --dart-define=DEMO_LOGIN=${DEMO_LOGIN}
+    --dart-define=API_URL=${API_URL} --dart-define=DEMO_LOCATION=${DEMO_LOCATION} --dart-define=DEMO_LOGIN=${DEMO_LOGIN} --dart-define=ALLOW_INSECURE_HTTP=${ALLOW_INSECURE_HTTP}
 
-FROM nginx:1.27-alpine
+# Unprivileged nginx (uid 101) with security headers + CSP from nginx.conf
+FROM nginxinc/nginx-unprivileged:1.27-alpine
 ARG APP
+ARG API_URL=http://localhost:3000/api/v1
 COPY --from=build /src/${APP}/build/web /usr/share/nginx/html
-RUN printf 'server { listen 80; root /usr/share/nginx/html; location / { try_files $uri /index.html; } }' > /etc/nginx/conf.d/default.conf
-EXPOSE 80
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+USER root
+RUN ORIGIN="$(echo "$API_URL" | sed -E 's#^(https?://[^/]+).*#\1#')" && WS="$(echo "$ORIGIN" | sed -E 's#^http#ws#')" \
+    && sed -i "s#__API_ORIGIN__#$ORIGIN#g; s#__API_WS_ORIGIN__#$WS#g" /etc/nginx/conf.d/default.conf
+USER 101
+EXPOSE 8080

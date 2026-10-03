@@ -197,6 +197,7 @@ export class DriversController {
 
   @Post('withdrawals')
   @Idempotent('driver-withdrawal')
+  @RateLimit({ name: 'withdrawal', limit: 5, windowSec: 3600, by: 'user' })
   withdraw(@CurrentUser() u: AuthUser, @Body() dto: WithdrawalDto) {
     return this.payments.requestWithdrawal(u.id, dto.amount, { method: dto.method, accountNumber: dto.accountNumber, accountTitle: dto.accountTitle });
   }

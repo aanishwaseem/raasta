@@ -16,6 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CurrentUser } from '../../common/auth/decorators';
+import { RateLimit } from '../../common/rate-limit/rate-limit';
 import type { AuthUser } from '../../common/auth/auth.types';
 import { config } from '../../config/config';
 import { UsersService } from './users.service';
@@ -47,15 +48,19 @@ export class UsersController {
 
   @Post('avatar')
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: config().MAX_UPLOAD_BYTES } }))
+  @RateLimit({ name: 'avatar-upload', limit: 10, windowSec: 3600, by: 'user' })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: config().MAX_UPLOAD_BYTES, files: 1, fields: 5, parts: 6 } }))
   avatar(@CurrentUser() u: AuthUser, @UploadedFile() file: Express.Multer.File) {
     return this.users.setAvatar(u.id, file);
   }
 
   @Get('avatar/:userId')
-  async getAvatar(@Param('userId', ParseUUIDPipe) userId: string, @Res() res: Response) {
-    const { data, type } = await this.users.avatar(userId);
+  async getAvatar(@CurrentUser() u: AuthUser, @Param('userId', ParseUUIDPipe) userId: string, @Res() res: Response) {
+    const { data, type } = await this.users.avatar(u, userId);
     res.setHeader('Content-Type', type);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.send(data);
   }

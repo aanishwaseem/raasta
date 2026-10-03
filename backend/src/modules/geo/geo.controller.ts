@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsLatitude, IsLongitude, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { Public } from '../../common/auth/decorators';
+import { RateLimit } from '../../common/rate-limit/rate-limit';
 import { LatLngDto } from '../../common/dto';
 import { GeoService } from './geo.service';
 
@@ -30,6 +31,7 @@ export class GeoController {
   }
 
   @ApiBearerAuth()
+  @RateLimit({ name: 'places-search', limit: 60, windowSec: 60, by: 'user' })
   @Get('places/search')
   search(@Query() q: SearchQuery) {
     const near = q.lat !== undefined && q.lng !== undefined ? { lat: q.lat, lng: q.lng } : undefined;
@@ -43,6 +45,7 @@ export class GeoController {
   }
 
   @Public()
+  @RateLimit({ name: 'service-check', limit: 60, windowSec: 60, by: 'ip' })
   @Get('geo/service-check')
   async serviceCheck(@Query() q: PointQuery) {
     const area = await this.geo.serviceAreaAt(q);

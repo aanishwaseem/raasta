@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { timingSafeEqual } from 'crypto';
 import { config } from '../../config/config';
 import { DatabaseService } from '../../common/db/database.service';
 import { EventBus } from '../../common/events/event-bus';
@@ -291,11 +292,15 @@ export class RidesService implements OnModuleInit {
   async start(driverId: string, rideId: string, pin: string) {
     const ride = await this.driverRide(driverId, rideId);
     if (ride.status !== 'DRIVER_ARRIVED') throw AppError.invalidTransition(ride.status, 'IN_PROGRESS');
-    if (ride.pin_attempts >= PIN_MAX_ATTEMPTS) throw AppError.unprocessable('PIN_LOCKED', 'Too many incorrect PINs. Please confirm the passenger and contact support.');
-    if (pin !== ride.pin_code) {
-      await this.db.query(`UPDATE rides SET pin_attempts = pin_attempts + 1 WHERE id = $1`, [rideId]);
+    // Count the attempt atomically before comparing so parallel requests cannot brute-force the 4-digit PIN past the limit.
+    const counted = await this.db.one<{ pin_attempts: number }>(
+      `UPDATE rides SET pin_attempts = pin_attempts + 1 WHERE id = $1 AND pin_attempts < $2 RETURNING pin_attempts`,
+      [rideId, PIN_MAX_ATTEMPTS],
+    );
+    if (!counted) throw AppError.unprocessable('PIN_LOCKED', 'Too many incorrect PINs. Please confirm the passenger and contact support.');
+    if (!ride.pin_code || pin.length !== ride.pin_code.length || !timingSafeEqual(Buffer.from(pin), Buffer.from(ride.pin_code))) {
       await this.rides.event(this.db.pool, rideId, 'pin_failed', { actorId: driverId, actorRole: 'DRIVER' });
-      const left = PIN_MAX_ATTEMPTS - ride.pin_attempts - 1;
+      const left = PIN_MAX_ATTEMPTS - counted.pin_attempts;
       throw AppError.unprocessable('PIN_INCORRECT', left > 0 ? `That PIN is not correct. ${left} attempt(s) left. Make sure this is the right passenger.` : 'Too many incorrect PINs.', { attemptsLeft: left });
     }
     const now = new Date();
@@ -408,6 +413,8 @@ export class RidesService implements OnModuleInit {
       }),
     );
     if (!(await this.presence.hasActiveRide(driverId))) await this.presence.setStatus(driverId, 'IDLE');
+    // the cancelling driver must stop receiving this ride's room traffic (the next driver's live location)
+    await this.realtime.removeUserFromRide(driverId, rideId);
     this.realtime.toUser(ride.passenger_id, 'ride.matching', {
       rideId,
       stage: 'driver_cancelled',

@@ -109,6 +109,7 @@ jobs:
   docker:
     name: docker compose stack
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Build images and start the stack
@@ -116,11 +117,11 @@ jobs:
       - name: Wait for the API and AI service
         run: |
           for i in $(seq 1 60); do
-            curl -sf localhost:3000/health/ready && break
+            curl -sf --max-time 5 localhost:3000/health/ready && break
             sleep 3
           done
-          curl -sf localhost:3000/health/ready
-          for url in localhost:5173 localhost:8080 localhost:8081; do curl -sf -o /dev/null "$url"; done
+          curl -sf --max-time 5 localhost:3000/health/ready
+          for url in localhost:5173 localhost:8080 localhost:8081; do curl -sf --max-time 10 -o /dev/null "$url"; done
       - name: Sign in as the seeded rider through the running stack
         run: |
           curl -sf -X POST localhost:3000/api/v1/auth/login -H 'content-type: application/json' \
@@ -128,6 +129,6 @@ jobs:
             | grep -q accessToken
       - name: Show logs on failure
         if: failure()
-        run: docker compose ps -a && docker compose logs --tail=80
+        run: docker compose ps -a && docker compose logs --tail=120
       - run: docker compose --profile web down -v
         if: always()
